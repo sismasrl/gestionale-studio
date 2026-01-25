@@ -121,14 +121,14 @@ st.markdown(f"""
     }}
     .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
     
-    /* TOTALI BOX */
+    /* TOTALI BOX (MODIFICATO: COLORE PETROLIO) */
     .total-box-standard {{
-        background-color: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
+        background-color: {COL_DEEP}; border: 1px solid {COL_ACCENT}; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
     }}
     .total-box-desat {{
         background-color: #0f0f0f; border: 1px solid #222; padding: 10px; border-radius: 5px; text-align: center;
     }}
-    .total-label {{ font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+    .total-label {{ font-size: 12px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
     .total-value {{ font-size: 24px; font-weight: bold; color: #FFF; }}
 
     .logo-container {{ display: flex; justify-content: center; padding-bottom: 30px; border-bottom: 1px solid #333333; margin-bottom: 30px; }}
