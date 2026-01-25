@@ -8,12 +8,37 @@ import json
 import os
 import time
 import io
-import re
 
-# --- 0. CONFIGURAZIONE PAGINA & SETUP ---
+# --- 0. CONFIGURAZIONE TEMA (CORREZIONE COLORE ROSSO) ---
+# Questa funzione crea il file di configurazione per forzare il colore Petrolio al posto del Rosso
+def setup_config_toml():
+    config_dir = ".streamlit"
+    config_path = os.path.join(config_dir, "config.toml")
+    if not os.path.exists(config_dir): 
+        os.makedirs(config_dir)
+    
+    # Definisce il tema Petrolio
+    config_content = """
+[theme]
+primaryColor = "#427e72"
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#111111"
+textColor = "#FFFFFF"
+font = "sans serif"
+[server]
+runOnSave = true
+"""
+    if not os.path.exists(config_path):
+        with open(config_path, "w") as f:
+            f.write(config_content)
+
+# Eseguiamo il setup del tema PRIMA di tutto
+setup_config_toml()
+
+# --- 1. SETUP PAGINA ---
 st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_state="expanded")
 
-# --- 0.1 SISTEMA DI LOGIN (PROTEZIONE PASSWORD) ---
+# --- 1.1 SISTEMA DI LOGIN ---
 def check_password():
     if "PASSWORD_ACCESSO" not in st.secrets:
         return True
@@ -60,6 +85,8 @@ st.markdown(f"""
     <style>
     .stApp {{ background-color: #000000; color: #FFFFFF; font-family: 'Helvetica Neue', sans-serif; }}
     [data-testid="stSidebar"] {{ background-color: #000000; border-right: 1px solid #333333; }}
+    
+    /* INPUTS */
     .stTextInput input, .stNumberInput input, .stDateInput input, .stTextArea textarea {{
         background-color: #0a0a0a !important; color: #FFF !important; 
         border: 1px solid #333 !important; border-radius: 4px !important; 
@@ -67,6 +94,8 @@ st.markdown(f"""
     div[data-baseweb="select"] > div {{
         background-color: #0a0a0a !important; color: #FFF !important; border-color: #333 !important;
     }}
+    
+    /* EXPANDERS */
     div[data-testid="stExpander"] details {{
         border: 1px solid {COL_DEEP} !important; border-radius: 8px !important;       
         overflow: hidden !important; background-color: transparent !important; margin-bottom: 20px !important;
@@ -78,10 +107,14 @@ st.markdown(f"""
     div[data-testid="stExpanderDetails"] {{
         background-color: transparent !important; border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 20px !important;
     }}
+    
+    /* BUTTONS */
     div.stButton > button {{
         background-color: {COL_DEEP} !important; color: #FFFFFF !important; 
         border: 1px solid {COL_ACCENT} !important; border-radius: 4px; 
     }}
+
+    /* TOTALI BOX */
     .total-box-standard {{
         background-color: #0c3a47; border: 1px solid #427e72;
         text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 5px; 
@@ -92,6 +125,8 @@ st.markdown(f"""
     }}
     .total-label {{ font-size: 11px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }}
     .total-value {{ font-size: 18px; color: #fff; font-weight: bold; font-family: 'Courier New', monospace; }}
+    
+    /* ORGANIGRAMMA STYLES */
     .org-header {{ 
         color: {COL_ACCENT}; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 3px; 
         text-align: center; margin-top: 50px; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px; 
@@ -101,25 +136,27 @@ st.markdown(f"""
         border-radius: 4px; padding: 25px 20px; text-align: center; margin-bottom: 15px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
     }}
+    /* CORREZIONE ALTEZZA: Rimosso height:480px fisso, messo min-height più piccolo */
     .card-mid {{
         background-color: #111111; border: 1px solid #333; border-top: 3px solid {COL_DEEP}; 
-        border-radius: 4px; padding: 25px 20px; height: 480px;            
+        border-radius: 4px; padding: 25px 20px; min-height: 250px;            
         display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     }}
     .org-row {{
-        display: block; width: 100%; margin-bottom: 25px; text-align: center;
-        border-bottom: 1px solid #222; padding-bottom: 15px;
+        display: block; width: 100%; margin-bottom: 15px; text-align: center;
+        border-bottom: 1px solid #222; padding-bottom: 10px;
     }}
     .org-row:last-child {{ border-bottom: none; margin-bottom: 0; padding-bottom: 0; }}
     .role-label {{ 
-        color: {COL_ACCENT}; font-size: 18px; text-transform: uppercase; font-weight: bold; 
+        color: {COL_ACCENT}; font-size: 16px; text-transform: uppercase; font-weight: bold; 
         display: block; margin-bottom: 5px; letter-spacing: 0.5px;
     }}
     .card-subtitle {{ 
-        font-size: 20px; color: #FFFFFF; font-weight: bold; text-transform: uppercase; 
-        margin-bottom: 8px; width: 100%; text-align: center; line-height: 1.2;
+        font-size: 18px; color: #FFFFFF; font-weight: bold; text-transform: uppercase; 
+        margin-bottom: 15px; width: 100%; text-align: center; line-height: 1.2;
     }}
-    .name-text {{ font-size: 22px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
+    .name-text {{ font-size: 20px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
+    
     .logo-container {{ display: flex; justify-content: center; padding-bottom: 30px; border-bottom: 1px solid #333333; margin-bottom: 30px; }}
     .logo-container img {{ width: 100%; max-width: 500px; }}
     </style>
@@ -128,72 +165,37 @@ st.markdown(f"""
 LOGO_URL = "https://drive.google.com/thumbnail?id=1xKRvfMtlXd4vRpk_OlFE4MmkC3S7mZ4H&sz=w1000"
 st.markdown(f'<div class="logo-container"><img src="{LOGO_URL}"></div>', unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE BLINDATA) ---
+# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE ROBUSTA) ---
 SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" 
 
 def get_worksheet(sheet_name="Foglio1"):
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = None
     
-    # --- TENTATIVO 1: LEGGI GCP_CREDENTIALS CON PULIZIA AVANZATA ---
+    # 1. CLOUD (SECRETS)
     if "GCP_CREDENTIALS" in st.secrets:
         try:
-            # 1. Prendi la stringa grezza
-            json_str = st.secrets["GCP_CREDENTIALS"]
-            
-            # 2. Rimuovi spazi vuoti iniziali/finali
-            json_str = json_str.strip()
-            
-            # 3. TENTATIVO DI PARSING "STRICT=FALSE" (Accetta caratteri di controllo come newline reali)
+            json_str = st.secrets["GCP_CREDENTIALS"].strip()
+            # Parsing con tolleranza
             try:
                 creds_dict = json.loads(json_str, strict=False)
             except json.JSONDecodeError:
-                # Se fallisce, prova a rimuovere caratteri invisibili problematici
-                # Rimuove newline reali se non sono escapati, ma è rischioso. 
-                # Meglio: Sostituire le sequenze letterali che rompono
-                pass
-                
-            # Se siamo qui e creds_dict non esiste ancora o ha fallito, proviamo fix manuale
-            if 'creds_dict' not in locals():
-                 # Fix estremo: rimuove newline reali dentro la chiave privata se presenti
-                 # Spesso l'errore è: "line 5 column 46".
-                 creds_dict = json.loads(json_str.replace('\n', '\\n'), strict=False)
+                # Fallback estremo per caratteri strani
+                creds_dict = json.loads(json_str.replace('\n', '\\n'), strict=False)
 
-            # 4. FIX OBBLIGATORIO PRIVATE KEY
-            # GSpread vuole i newline reali (\n), ma JSON li vuole escapati (\\n).
-            # Se abbiamo letto il JSON, assicuriamoci che la chiave sia formattata giusta per Python.
             if "private_key" in creds_dict:
-                # Sostituisce eventuali \n letterali con veri 'a capo'
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-            
         except Exception as e:
-            # Non blocchiamo subito, proviamo gli altri metodi o diamo errore dopo
-            print(f"Errore parsing GCP_CREDENTIALS: {e}")
+            print(f"Errore lettura Secrets: {e}")
 
-    # --- TENTATIVO 2: VECCHIO METODO [gcp_service_account] ---
-    if not creds and "gcp_service_account" in st.secrets:
-        try:
-            if "json_content" in st.secrets["gcp_service_account"]:
-                creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"])
-            else:
-                creds_dict = dict(st.secrets["gcp_service_account"])
-            
-            if "private_key" in creds_dict:
-                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-            
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        except: pass
-
-    # --- TENTATIVO 3: LOCALE (PC) ---
+    # 2. LOCALE (FILE)
     if not creds and os.path.exists("credentials.json"):
         creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
     
-    # --- CHECK FINALE ---
     if not creds:
-        st.error("⚠️ ERRORE CRITICO: Impossibile leggere il file JSON delle credenziali.")
-        st.info("Suggerimento: Vai nei Secrets. Assicurati che il contenuto di 'GCP_CREDENTIALS' inizi con { e finisca con }. Se hai copiato il file, controlla che la 'private_key' non vada a capo da sola.")
+        st.error("⚠️ ERRORE CREDENZIALI: Controlla Secrets o file locale.")
         st.stop()
         
     try:
@@ -201,7 +203,7 @@ def get_worksheet(sheet_name="Foglio1"):
         sh = client.open_by_key(SHEET_ID)
         return sh.worksheet(sheet_name)
     except Exception as e:
-        st.error(f"Errore GSpread (ID foglio o permessi): {e}")
+        st.error(f"Errore GSpread: {e}")
         return None
 
 def carica_dati(sheet_name="Foglio1"):
@@ -216,7 +218,6 @@ def salva_record(record, sheet_name="Foglio1", key_field="Codice", mode="new"):
     new_row = pd.DataFrame([record])
     if mode == "update" and not df.empty and key_field in df.columns:
         df = df[df[key_field].astype(str) != str(record[key_field])]
-    
     df_final = pd.concat([df, new_row], ignore_index=True)
     wks.clear()
     wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
@@ -238,7 +239,6 @@ def fmt_euro(valore):
     except: valore = 0.0
     return f"€ {valore:,.2f}"
 
-# --- HELPER BATCH ---
 def importa_excel_batch(uploaded_file):
     try:
         df_new = pd.read_excel(uploaded_file)
@@ -246,7 +246,7 @@ def importa_excel_batch(uploaded_file):
         existing_codes = []
         if not df_existing.empty and "Codice" in df_existing.columns:
             existing_codes = df_existing["Codice"].astype(str).tolist()
-            
+        
         expected_cols = ["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", 
                          "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", 
                          "Totale Commessa", "Fatturato"]
@@ -778,6 +778,13 @@ def render_organigramma():
     with c1: st.markdown('<div class="org-card"><span class="role-label">CONTABILITA\' & HR</span><div class="name-text">ANDREA LUMINI</div></div>', unsafe_allow_html=True)
     with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS & R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
     with c3: st.markdown('<div class="org-card"><span class="role-label">GARE & MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
+
+    # --- REINSERITO LIVELLO 3 ---
+    st.markdown("<div class='org-header'>LIVELLO 3: OPERATIVO</div>", unsafe_allow_html=True)
+    c_op1, c_op2, c_op3 = st.columns(3)
+    with c_op1: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE SICUREZZA</span><div class="name-text">GIOVANNI PANCANI</div></div>', unsafe_allow_html=True)
+    with c_op2: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE RESTITUZIONE</span><div class="name-text">STEFANO BERTOCCI</div></div>', unsafe_allow_html=True)
+    with c_op3: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE DIAGNOSTICA</span><div class="name-text">GIOVANNI MINUTOLI</div></div>', unsafe_allow_html=True)
 
 # --- 7. ROUTING ---
 with st.sidebar:
