@@ -753,18 +753,18 @@ def render_organigramma():
             </div></div>""", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown('<div class="org-card"><span class="role-label">CONTABILITA\' & HR</span><div class="name-text">ANDREA LUMINI</div></div>', unsafe_allow_html=True)
-    with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS & R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
-    with c3: st.markdown('<div class="org-card"><span class="role-label">GARE & MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
+    with c1: st.markdown('<div class="org-card"><span class="role-label">CONTABILITA\' - IT - HR</span><div class="name-text">ANDREA LUMINI</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS - R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown('<div class="org-card"><span class="role-label">GARE - MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
 
-    # --- LIVELLO 3 CORRETTO (DA ULTIMA RICHIESTA) ---
+    # --- LIVELLO 3 OPERATIVO ---
     st.markdown("<div class='org-header' style='font-size: 18px;'>LIVELLO 3: OPERATIVO</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1: 
         st.markdown("""
         <div class="org-card" style="min-height: 200px;">
             <span class="role-label">PROJECT MANAGER</span>
-            <div class="card-subtitle" style="margin: 5px 0;">ARCHEOLOGIA PREVENTIVA</div>
+            <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">ARCHEOLOGIA PREVENTIVA</div>
             <div class="name-text">LORENZO MARASCO</div>
         </div>
         """, unsafe_allow_html=True)
@@ -772,7 +772,7 @@ def render_organigramma():
         st.markdown("""
         <div class="org-card" style="min-height: 200px;">
             <span class="role-label">PROJECT MANAGER</span>
-            <div class="card-subtitle" style="margin: 5px 0;">ARCHEOLOGIA DELL'ARCHITETTURA</div>
+            <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">ARCHEOLOGIA DELL'ARCHITETTURA</div>
             <div class="name-text">ANDREA ARRIGHETTI</div>
         </div>
         """, unsafe_allow_html=True)
@@ -780,7 +780,7 @@ def render_organigramma():
         st.markdown("""
         <div class="org-card" style="min-height: 200px;">
             <span class="role-label">PROJECT MANAGER</span>
-            <div class="card-subtitle" style="margin: 5px 0;">RILIEVO DIGITALE & BIM</div>
+            <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">RILIEVO DIGITALE & BIM</div>
             <div class="name-text">ANDREA LUMINI</div>
         </div>
         """, unsafe_allow_html=True)
@@ -788,7 +788,7 @@ def render_organigramma():
         st.markdown("""
         <div class="org-card" style="min-height: 200px;">
             <span class="role-label">PROJECT MANAGER</span>
-            <div class="card-subtitle" style="margin: 5px 0;">RILIEVO DIGITALE & 3D</div>
+            <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">RILIEVO DIGITALE & 3D</div>
             <div class="name-text">MARCO REPOLE</div>
         </div>
         """, unsafe_allow_html=True)
