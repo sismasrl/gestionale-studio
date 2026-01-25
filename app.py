@@ -9,32 +9,6 @@ import os
 import time
 import io
 
-# --- 0. CONFIGURAZIONE TEMA (CORREZIONE COLORE ROSSO) ---
-# Questa funzione crea il file di configurazione per forzare il colore Petrolio al posto del Rosso
-def setup_config_toml():
-    config_dir = ".streamlit"
-    config_path = os.path.join(config_dir, "config.toml")
-    if not os.path.exists(config_dir): 
-        os.makedirs(config_dir)
-    
-    # Definisce il tema Petrolio
-    config_content = """
-[theme]
-primaryColor = "#427e72"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#111111"
-textColor = "#FFFFFF"
-font = "sans serif"
-[server]
-runOnSave = true
-"""
-    if not os.path.exists(config_path):
-        with open(config_path, "w") as f:
-            f.write(config_content)
-
-# Eseguiamo il setup del tema PRIMA di tutto
-setup_config_toml()
-
 # --- 1. SETUP PAGINA ---
 st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_state="expanded")
 
@@ -114,18 +88,6 @@ st.markdown(f"""
         border: 1px solid {COL_ACCENT} !important; border-radius: 4px; 
     }}
 
-    /* TOTALI BOX */
-    .total-box-standard {{
-        background-color: #0c3a47; border: 1px solid #427e72;
-        text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 5px; 
-    }}
-    .total-box-desat {{
-        background-color: #1f2629; border: 1px solid #333333;
-        text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 5px; 
-    }}
-    .total-label {{ font-size: 11px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }}
-    .total-value {{ font-size: 18px; color: #fff; font-weight: bold; font-family: 'Courier New', monospace; }}
-    
     /* ORGANIGRAMMA STYLES */
     .org-header {{ 
         color: {COL_ACCENT}; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 3px; 
@@ -136,10 +98,11 @@ st.markdown(f"""
         border-radius: 4px; padding: 25px 20px; text-align: center; margin-bottom: 15px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
     }}
-    /* CORREZIONE ALTEZZA: Rimosso height:480px fisso, messo min-height più piccolo */
+    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 */
     .card-mid {{
         background-color: #111111; border: 1px solid #333; border-top: 3px solid {COL_DEEP}; 
-        border-radius: 4px; padding: 25px 20px; min-height: 250px;            
+        border-radius: 4px; padding: 25px 20px; 
+        height: 380px; /* ALTEZZA FISSA FORZATA */
         display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     }}
     .org-row {{
@@ -148,15 +111,14 @@ st.markdown(f"""
     }}
     .org-row:last-child {{ border-bottom: none; margin-bottom: 0; padding-bottom: 0; }}
     .role-label {{ 
-        color: {COL_ACCENT}; font-size: 16px; text-transform: uppercase; font-weight: bold; 
+        color: {COL_ACCENT}; font-size: 14px; text-transform: uppercase; font-weight: bold; 
         display: block; margin-bottom: 5px; letter-spacing: 0.5px;
     }}
     .card-subtitle {{ 
         font-size: 18px; color: #FFFFFF; font-weight: bold; text-transform: uppercase; 
         margin-bottom: 15px; width: 100%; text-align: center; line-height: 1.2;
     }}
-    .name-text {{ font-size: 20px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
-    
+    .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
     .logo-container {{ display: flex; justify-content: center; padding-bottom: 30px; border-bottom: 1px solid #333333; margin-bottom: 30px; }}
     .logo-container img {{ width: 100%; max-width: 500px; }}
     </style>
@@ -172,15 +134,12 @@ def get_worksheet(sheet_name="Foglio1"):
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = None
     
-    # 1. CLOUD (SECRETS)
     if "GCP_CREDENTIALS" in st.secrets:
         try:
             json_str = st.secrets["GCP_CREDENTIALS"].strip()
-            # Parsing con tolleranza
             try:
                 creds_dict = json.loads(json_str, strict=False)
             except json.JSONDecodeError:
-                # Fallback estremo per caratteri strani
                 creds_dict = json.loads(json_str.replace('\n', '\\n'), strict=False)
 
             if "private_key" in creds_dict:
@@ -190,7 +149,6 @@ def get_worksheet(sheet_name="Foglio1"):
         except Exception as e:
             print(f"Errore lettura Secrets: {e}")
 
-    # 2. LOCALE (FILE)
     if not creds and os.path.exists("credentials.json"):
         creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
     
@@ -779,12 +737,13 @@ def render_organigramma():
     with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS & R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
     with c3: st.markdown('<div class="org-card"><span class="role-label">GARE & MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
 
-    # --- REINSERITO LIVELLO 3 ---
-    st.markdown("<div class='org-header'>LIVELLO 3: OPERATIVO</div>", unsafe_allow_html=True)
-    c_op1, c_op2, c_op3 = st.columns(3)
-    with c_op1: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE SICUREZZA</span><div class="name-text">GIOVANNI PANCANI</div></div>', unsafe_allow_html=True)
-    with c_op2: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE RESTITUZIONE</span><div class="name-text">STEFANO BERTOCCI</div></div>', unsafe_allow_html=True)
-    with c_op3: st.markdown('<div class="org-card"><span class="role-label">RESPONSABILE DIAGNOSTICA</span><div class="name-text">GIOVANNI MINUTOLI</div></div>', unsafe_allow_html=True)
+    # --- REINSERITO LIVELLO 3 CORRETTO (OPERATIVO - I 4 PM) ---
+    st.markdown("<div class='org-header'>LIVELLO 3: OPERATIVO (RESPONSABILI DI SETTORE)</div>", unsafe_allow_html=True)
+    c_pm1, c_pm2, c_pm3, c_pm4 = st.columns(4)
+    with c_pm1: st.markdown('<div class="org-card"><span class="role-label">ARCHEOLOGIA PREV.</span><div class="name-text">LORENZO MARASCO</div></div>', unsafe_allow_html=True)
+    with c_pm2: st.markdown('<div class="org-card"><span class="role-label">ARCH. ARCHITETTURA</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
+    with c_pm3: st.markdown('<div class="org-card"><span class="role-label">RILIEVO BIM</span><div class="name-text">ANDREA LUMINI</div></div>', unsafe_allow_html=True)
+    with c_pm4: st.markdown('<div class="org-card"><span class="role-label">RILIEVO 3D</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
 
 # --- 7. ROUTING ---
 with st.sidebar:
