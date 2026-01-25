@@ -8,22 +8,20 @@ import json
 import os
 import time
 import io
+import re
 
 # --- 0. CONFIGURAZIONE PAGINA & SETUP ---
 st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_state="expanded")
 
 # --- 0.1 SISTEMA DI LOGIN (PROTEZIONE PASSWORD) ---
 def check_password():
-    """Ritorna True se l'utente ha inserito la password corretta."""
-    
-    # Se la password non è impostata nei secrets (es. locale), lasciamo passare (o puoi bloccare)
     if "PASSWORD_ACCESSO" not in st.secrets:
         return True
 
     def password_entered():
         if st.session_state["password"] == st.secrets["PASSWORD_ACCESSO"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Non salviamo la psw in memoria
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
@@ -39,13 +37,12 @@ def check_password():
     else:
         return True
 
-# Blocca l'esecuzione se la password non è corretta
 if not check_password():
     st.stop()
 
 # --- COSTANTI & STILI ---
-COL_DEEP = "#0c3a47"   # Petrolio Scuro
-COL_ACCENT = "#427e72" # Verde Acqua / Petrolio Chiaro
+COL_DEEP = "#0c3a47"
+COL_ACCENT = "#427e72"
 
 SOCI_OPZIONI = [
     "ARRIGHETTI ANDREA", "BERTOCCI STEFANO", "LUMINI ANDREA", 
@@ -61,11 +58,8 @@ SERVIZI_LIST = [
 
 st.markdown(f"""
     <style>
-    /* --- BASE THEME --- */
     .stApp {{ background-color: #000000; color: #FFFFFF; font-family: 'Helvetica Neue', sans-serif; }}
     [data-testid="stSidebar"] {{ background-color: #000000; border-right: 1px solid #333333; }}
-    
-    /* INPUT FIELDS STANDARD */
     .stTextInput input, .stNumberInput input, .stDateInput input, .stTextArea textarea {{
         background-color: #0a0a0a !important; color: #FFF !important; 
         border: 1px solid #333 !important; border-radius: 4px !important; 
@@ -73,35 +67,21 @@ st.markdown(f"""
     div[data-baseweb="select"] > div {{
         background-color: #0a0a0a !important; color: #FFF !important; border-color: #333 !important;
     }}
-    
-    /* --- EXPANDERS STYLED --- */
     div[data-testid="stExpander"] details {{
-        border: 1px solid {COL_DEEP} !important;
-        border-radius: 8px !important;       
-        overflow: hidden !important;
-        background-color: transparent !important;
-        margin-bottom: 20px !important;
+        border: 1px solid {COL_DEEP} !important; border-radius: 8px !important;       
+        overflow: hidden !important; background-color: transparent !important; margin-bottom: 20px !important;
     }}
     div[data-testid="stExpander"] summary {{
-        background-color: {COL_DEEP} !important;
-        border: none !important;             
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-        border-radius: 0 !important;         
+        background-color: {COL_DEEP} !important; border: none !important;             
+        color: #FFFFFF !important; font-weight: 600 !important; border-radius: 0 !important;         
     }}
     div[data-testid="stExpanderDetails"] {{
-        background-color: transparent !important;
-        border-top: 1px solid rgba(255, 255, 255, 0.1); 
-        padding: 20px !important;
+        background-color: transparent !important; border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 20px !important;
     }}
-
-    /* BUTTONS */
     div.stButton > button {{
         background-color: {COL_DEEP} !important; color: #FFFFFF !important; 
         border: 1px solid {COL_ACCENT} !important; border-radius: 4px; 
     }}
-
-    /* TOTALI BOX */
     .total-box-standard {{
         background-color: #0c3a47; border: 1px solid #427e72;
         text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 5px; 
@@ -112,8 +92,6 @@ st.markdown(f"""
     }}
     .total-label {{ font-size: 11px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }}
     .total-value {{ font-size: 18px; color: #fff; font-weight: bold; font-family: 'Courier New', monospace; }}
-    
-    /* --- ORGANIGRAMMA STYLES --- */
     .org-header {{ 
         color: {COL_ACCENT}; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 3px; 
         text-align: center; margin-top: 50px; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px; 
@@ -141,9 +119,7 @@ st.markdown(f"""
         font-size: 20px; color: #FFFFFF; font-weight: bold; text-transform: uppercase; 
         margin-bottom: 8px; width: 100%; text-align: center; line-height: 1.2;
     }}
-    .card-detail {{ font-size: 16px; color: #888; margin-bottom: 25px; width: 100%; text-align: center; }}
     .name-text {{ font-size: 22px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
-    
     .logo-container {{ display: flex; justify-content: center; padding-bottom: 30px; border-bottom: 1px solid #333333; margin-bottom: 30px; }}
     .logo-container img {{ width: 100%; max-width: 500px; }}
     </style>
@@ -152,45 +128,72 @@ st.markdown(f"""
 LOGO_URL = "https://drive.google.com/thumbnail?id=1xKRvfMtlXd4vRpk_OlFE4MmkC3S7mZ4H&sz=w1000"
 st.markdown(f'<div class="logo-container"><img src="{LOGO_URL}"></div>', unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE UNIVERSALE) ---
-SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" # Sostituisci col tuo ID reale
+# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE BLINDATA) ---
+SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" 
 
 def get_worksheet(sheet_name="Foglio1"):
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = None
     
-    # 1. METODO CLOUD SEMPLIFICATO (Variabile GCP_CREDENTIALS)
+    # --- TENTATIVO 1: LEGGI GCP_CREDENTIALS CON PULIZIA AVANZATA ---
     if "GCP_CREDENTIALS" in st.secrets:
         try:
-            # Legge la stringa JSON pura dai secrets
-            json_str = st.secrets["GCP_CREDENTIALS"].strip()
-            creds_dict = json.loads(json_str)
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        except Exception as e:
-            st.error(f"Errore lettura GCP_CREDENTIALS: {e}")
+            # 1. Prendi la stringa grezza
+            json_str = st.secrets["GCP_CREDENTIALS"]
+            
+            # 2. Rimuovi spazi vuoti iniziali/finali
+            json_str = json_str.strip()
+            
+            # 3. TENTATIVO DI PARSING "STRICT=FALSE" (Accetta caratteri di controllo come newline reali)
+            try:
+                creds_dict = json.loads(json_str, strict=False)
+            except json.JSONDecodeError:
+                # Se fallisce, prova a rimuovere caratteri invisibili problematici
+                # Rimuove newline reali se non sono escapati, ma è rischioso. 
+                # Meglio: Sostituire le sequenze letterali che rompono
+                pass
+                
+            # Se siamo qui e creds_dict non esiste ancora o ha fallito, proviamo fix manuale
+            if 'creds_dict' not in locals():
+                 # Fix estremo: rimuove newline reali dentro la chiave privata se presenti
+                 # Spesso l'errore è: "line 5 column 46".
+                 creds_dict = json.loads(json_str.replace('\n', '\\n'), strict=False)
 
-    # 2. METODO CLOUD VECCHIO (Compatibilità)
-    elif "gcp_service_account" in st.secrets:
+            # 4. FIX OBBLIGATORIO PRIVATE KEY
+            # GSpread vuole i newline reali (\n), ma JSON li vuole escapati (\\n).
+            # Se abbiamo letto il JSON, assicuriamoci che la chiave sia formattata giusta per Python.
+            if "private_key" in creds_dict:
+                # Sostituisce eventuali \n letterali con veri 'a capo'
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+            
+        except Exception as e:
+            # Non blocchiamo subito, proviamo gli altri metodi o diamo errore dopo
+            print(f"Errore parsing GCP_CREDENTIALS: {e}")
+
+    # --- TENTATIVO 2: VECCHIO METODO [gcp_service_account] ---
+    if not creds and "gcp_service_account" in st.secrets:
         try:
             if "json_content" in st.secrets["gcp_service_account"]:
                 creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"])
             else:
                 creds_dict = dict(st.secrets["gcp_service_account"])
-                if "private_key" in creds_dict:
-                    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
+            if "private_key" in creds_dict:
+                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         except: pass
 
-    # 3. METODO LOCALE (PC)
+    # --- TENTATIVO 3: LOCALE (PC) ---
     if not creds and os.path.exists("credentials.json"):
         creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
     
-    # Check Finale
+    # --- CHECK FINALE ---
     if not creds:
-        st.error("⚠️ ERRORE CREDENZIALI: Non trovate né su Cloud (Secrets) né in Locale.")
-        # Debug solo per l'admin: mostra quali chiavi esistono (senza valori)
-        st.write("Chiavi Secrets rilevate:", list(st.secrets.keys()))
-        st.info("Configura 'GCP_CREDENTIALS' nei Secrets di Streamlit.")
+        st.error("⚠️ ERRORE CRITICO: Impossibile leggere il file JSON delle credenziali.")
+        st.info("Suggerimento: Vai nei Secrets. Assicurati che il contenuto di 'GCP_CREDENTIALS' inizi con { e finisca con }. Se hai copiato il file, controlla che la 'private_key' non vada a capo da sola.")
         st.stop()
         
     try:
@@ -198,7 +201,7 @@ def get_worksheet(sheet_name="Foglio1"):
         sh = client.open_by_key(SHEET_ID)
         return sh.worksheet(sheet_name)
     except Exception as e:
-        st.error(f"Errore connessione GSpread: {e}")
+        st.error(f"Errore GSpread (ID foglio o permessi): {e}")
         return None
 
 def carica_dati(sheet_name="Foglio1"):
@@ -235,7 +238,7 @@ def fmt_euro(valore):
     except: valore = 0.0
     return f"€ {valore:,.2f}"
 
-# --- HELPER PER IMPORTAZIONE BATCH ---
+# --- HELPER BATCH ---
 def importa_excel_batch(uploaded_file):
     try:
         df_new = pd.read_excel(uploaded_file)
@@ -247,30 +250,24 @@ def importa_excel_batch(uploaded_file):
         expected_cols = ["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", 
                          "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", 
                          "Totale Commessa", "Fatturato"]
-        
         records_to_add = []
         count_skipped = 0
         
         for _, row in df_new.iterrows():
             if "Codice" not in row or pd.isna(row["Codice"]): continue
             codice = str(row["Codice"]).strip()
-            
             if codice in existing_codes:
                 count_skipped += 1
                 continue
-            
             rec = {}
             for col in expected_cols:
                 val = row.get(col, "")
                 if pd.isna(val): val = ""
                 rec[col] = val
-            
             rec["Portatore_Val"] = 0.0
             rec["Costi Società"] = 0.0
             rec["Utile Netto"] = 0.0
             rec["Data Inserimento"] = str(date.today())
-            
-            # JSON default essenziale
             rec["Dati_JSON"] = json.dumps({
                 "incassi": [], "soci": [], "collab": [], "spese": [], 
                 "servizi": [], "percentages": {"portatore": 10, "societa": 10}
@@ -282,12 +279,10 @@ def importa_excel_batch(uploaded_file):
             current_data = wks.get_all_values()
             headers = current_data[0] 
             rows_to_append = []
-            
             for r in records_to_add:
                 ordered_row = []
                 for h in headers: ordered_row.append(r.get(h, ""))
                 rows_to_append.append(ordered_row)
-                
             wks.append_rows(rows_to_append)
             st.success(f"✅ Importati {len(records_to_add)} record. ({count_skipped} duplicati ignorati)")
             time.sleep(2)
@@ -295,14 +290,11 @@ def importa_excel_batch(uploaded_file):
         else:
             if count_skipped > 0: st.warning(f"⚠️ Nessun nuovo dato. {count_skipped} commesse esistevano già.")
             else: st.error("❌ Nessun dato valido trovato.")
-                
     except Exception as e: st.error(f"Errore Import: {e}")
 
 # --- 3. FORM COMMESSA ---
 def render_commessa_form(data=None):
     is_edit = data is not None
-    
-    # Init Session State per form
     if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
     if "form_piva" not in st.session_state: st.session_state["form_piva"] = ""
     if "form_sede" not in st.session_state: st.session_state["form_sede"] = ""
@@ -383,7 +375,6 @@ def render_commessa_form(data=None):
         servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
 
     with st.expander("02 // COMMITTENZA", expanded=True):
-        # LOGICA UPSERT CLIENTE
         def on_cliente_change():
             sel = st.session_state["sel_cliente_box"]
             if sel and sel != "➕ NUOVO CLIENTE" and sel in lista_clienti:
@@ -406,12 +397,10 @@ def render_commessa_form(data=None):
         except: idx_cli = 0
 
         sel_val = st.selectbox("Seleziona Cliente esistente o Nuovo ▼", display_list, index=idx_cli, key="sel_cliente_box", on_change=on_cliente_change)
-
         if sel_val == "➕ NUOVO CLIENTE":
             nome_cliente_manuale = st.text_input("Inserisci Nome Nuovo Cliente *", value="")
             nome_cliente_finale = nome_cliente_manuale
-        else:
-            nome_cliente_finale = sel_val
+        else: nome_cliente_finale = sel_val
 
         c1, c2 = st.columns(2)
         p_iva = c1.text_input("P.IVA / CF", value=st.session_state["form_piva"])
@@ -433,7 +422,6 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI.index(data.get("Portatore", SOCI_OPZIONI[0])) if is_edit and data.get("Portatore") in SOCI_OPZIONI else 0
         portatore = c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI, index=idx_soc)
 
-    # Inizializzazione Tabelle
     if "stato_incassi" not in st.session_state:
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data": date.today(), "Note": ""}])
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -491,17 +479,13 @@ def render_commessa_form(data=None):
         }
         edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, use_container_width=True, key="ed_inc")
         
-        # Ricalcolo al volo
         ricalcolo = edited_incassi.copy()
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
-        
-        # Check differenze per evitare loop
         diff = False
         try:
             if not ricalcolo["Importo lordo €"].equals(st.session_state["stato_incassi"]["Importo lordo €"]): diff = True
             if not ricalcolo["Importo netto €"].equals(st.session_state["stato_incassi"]["Importo netto €"]): diff = True
         except: diff = True
-        
         if diff:
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
@@ -578,7 +562,6 @@ def render_commessa_form(data=None):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
         else:
-            # --- AUTO-SALVATAGGIO CLIENTE NUOVO ---
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}' alla rubrica...", icon="👤")
                 rec_cliente = {
@@ -587,7 +570,6 @@ def render_commessa_form(data=None):
                 }
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # Serialize
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
                 "soci": edited_soci.to_dict('records'),
