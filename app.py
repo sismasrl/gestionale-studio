@@ -16,11 +16,8 @@ st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_st
 def check_password():
     """Ritorna True se l'utente ha inserito la password corretta."""
     
-    # Se stiamo lavorando in locale (senza Secrets), saltiamo il controllo o usiamo una psw default
-    # Ma per sicurezza, se mancano i secrets, assumiamo sia dev environment.
+    # Se mancano i secrets (es. locale senza config), entra diretto (o gestisci come preferisci)
     if "PASSWORD_ACCESSO" not in st.secrets:
-        # Se sei sul tuo PC e non hai configurato secrets.toml, entra diretto (o metti logica diversa)
-        # Per ora lasciamo entrare diretto in locale per comodità
         return True
 
     def password_entered():
@@ -155,41 +152,43 @@ st.markdown(f"""
 LOGO_URL = "https://drive.google.com/thumbnail?id=1xKRvfMtlXd4vRpk_OlFE4MmkC3S7mZ4H&sz=w1000"
 st.markdown(f'<div class="logo-container"><img src="{LOGO_URL}"></div>', unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATI (GSPREAD - SMART VERSION) ---
-SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" # Sostituisci col tuo ID reale se diverso
+# --- 2. GESTIONE DATI (GSPREAD - SMART VERSION BLINDATA) ---
+SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" # ID del tuo foglio
 
 def get_worksheet(sheet_name="Foglio1"):
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # LOGICA IBRIDA: Cloud (Secrets) vs Locale (File JSON)
     creds = None
     
-    # 1. Prova a leggere dai Secrets di Streamlit (Cloud)
-    if "gcp_service_account" in st.secrets:
+    # --- METODO 1: CLOUD (SECRETS CON JSON RAW) ---
+    # Cerca la chiave 'json_content' dove hai incollato tutto il file grezzo
+    if "gcp_service_account" in st.secrets and "json_content" in st.secrets["gcp_service_account"]:
         try:
-            # Crea un dizionario dai secrets
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            
-            # Fix per le newlines nella private_key se necessario
-            if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-                
+            # Parsa il JSON dalla stringa incollata
+            creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"])
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         except Exception as e:
-            st.error(f"Errore lettura Secrets: {e}")
-            
-    # 2. Se non ha trovato i secrets, prova il file locale (PC di Sviluppo)
-    if not creds and os.path.exists("credentials.json"):
-        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+            st.error(f"Errore interpretazione JSON nei Secrets: {e}")
     
+    # --- METODO 2: LOCALE (FILE credentials.json) ---
+    # Se fallisce il metodo Cloud o non siamo sul cloud, cerca il file locale
+    if not creds and os.path.exists("credentials.json"):
+        try:
+            creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+        except Exception as e:
+            st.error(f"Errore lettura file locale: {e}")
+
     if not creds:
-        st.error("⚠️ ERRORE: Nessuna credenziale trovata (Manca 'credentials.json' o Configurazione Secrets).")
+        st.error("⚠️ ERRORE CRITICO: Credenziali non trovate.")
+        st.info("Configura i Secrets su Streamlit Cloud usando il parametro 'json_content' oppure verifica 'credentials.json' in locale.")
         st.stop()
         
-    client = gspread.authorize(creds)
-    sh = client.open_by_key(SHEET_ID)
-    try: return sh.worksheet(sheet_name)
-    except: return None
+    try:
+        client = gspread.authorize(creds)
+        sh = client.open_by_key(SHEET_ID)
+        return sh.worksheet(sheet_name)
+    except Exception as e:
+        st.error(f"Errore connessione GSpread: {e}")
+        return None
 
 def carica_dati(sheet_name="Foglio1"):
     wks = get_worksheet(sheet_name)
