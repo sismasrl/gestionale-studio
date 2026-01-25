@@ -16,7 +16,7 @@ st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_st
 def check_password():
     """Ritorna True se l'utente ha inserito la password corretta."""
     
-    # Se mancano i secrets (es. locale senza config), entra diretto (o gestisci come preferisci)
+    # Se la password non è impostata nei secrets (es. locale), lasciamo passare (o puoi bloccare)
     if "PASSWORD_ACCESSO" not in st.secrets:
         return True
 
@@ -152,34 +152,45 @@ st.markdown(f"""
 LOGO_URL = "https://drive.google.com/thumbnail?id=1xKRvfMtlXd4vRpk_OlFE4MmkC3S7mZ4H&sz=w1000"
 st.markdown(f'<div class="logo-container"><img src="{LOGO_URL}"></div>', unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATI (GSPREAD - SMART VERSION BLINDATA) ---
-SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" # ID del tuo foglio
+# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE UNIVERSALE) ---
+SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" # Sostituisci col tuo ID reale
 
 def get_worksheet(sheet_name="Foglio1"):
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = None
     
-    # --- METODO 1: CLOUD (SECRETS CON JSON RAW) ---
-    # Cerca la chiave 'json_content' dove hai incollato tutto il file grezzo
-    if "gcp_service_account" in st.secrets and "json_content" in st.secrets["gcp_service_account"]:
+    # 1. METODO CLOUD SEMPLIFICATO (Variabile GCP_CREDENTIALS)
+    if "GCP_CREDENTIALS" in st.secrets:
         try:
-            # Parsa il JSON dalla stringa incollata
-            creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"])
+            # Legge la stringa JSON pura dai secrets
+            json_str = st.secrets["GCP_CREDENTIALS"].strip()
+            creds_dict = json.loads(json_str)
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         except Exception as e:
-            st.error(f"Errore interpretazione JSON nei Secrets: {e}")
-    
-    # --- METODO 2: LOCALE (FILE credentials.json) ---
-    # Se fallisce il metodo Cloud o non siamo sul cloud, cerca il file locale
-    if not creds and os.path.exists("credentials.json"):
-        try:
-            creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
-        except Exception as e:
-            st.error(f"Errore lettura file locale: {e}")
+            st.error(f"Errore lettura GCP_CREDENTIALS: {e}")
 
+    # 2. METODO CLOUD VECCHIO (Compatibilità)
+    elif "gcp_service_account" in st.secrets:
+        try:
+            if "json_content" in st.secrets["gcp_service_account"]:
+                creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"])
+            else:
+                creds_dict = dict(st.secrets["gcp_service_account"])
+                if "private_key" in creds_dict:
+                    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        except: pass
+
+    # 3. METODO LOCALE (PC)
+    if not creds and os.path.exists("credentials.json"):
+        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+    
+    # Check Finale
     if not creds:
-        st.error("⚠️ ERRORE CRITICO: Credenziali non trovate.")
-        st.info("Configura i Secrets su Streamlit Cloud usando il parametro 'json_content' oppure verifica 'credentials.json' in locale.")
+        st.error("⚠️ ERRORE CREDENZIALI: Non trovate né su Cloud (Secrets) né in Locale.")
+        # Debug solo per l'admin: mostra quali chiavi esistono (senza valori)
+        st.write("Chiavi Secrets rilevate:", list(st.secrets.keys()))
+        st.info("Configura 'GCP_CREDENTIALS' nei Secrets di Streamlit.")
         st.stop()
         
     try:
