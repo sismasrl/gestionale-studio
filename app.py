@@ -57,6 +57,7 @@ SERVIZI_LIST = [
 
 st.markdown(f"""
     <style>
+    /* STILI GENERALI */
     .stApp {{ background-color: #000000; color: #FFFFFF; font-family: 'Helvetica Neue', sans-serif; }}
     [data-testid="stSidebar"] {{ background-color: #000000; border-right: 1px solid #333333; }}
     
@@ -98,7 +99,7 @@ st.markdown(f"""
         border-radius: 4px; padding: 25px 20px; text-align: center; margin-bottom: 15px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
     }}
-    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 */
+    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 (CdA, Esecutivo, Scientifico) */
     .card-mid {{
         background-color: #111111; border: 1px solid #333; border-top: 3px solid {COL_DEEP}; 
         border-radius: 4px; padding: 25px 20px; 
@@ -119,6 +120,17 @@ st.markdown(f"""
         margin-bottom: 15px; width: 100%; text-align: center; line-height: 1.2;
     }}
     .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
+    
+    /* TOTALI BOX */
+    .total-box-standard {{
+        background-color: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
+    }}
+    .total-box-desat {{
+        background-color: #0f0f0f; border: 1px solid #222; padding: 10px; border-radius: 5px; text-align: center;
+    }}
+    .total-label {{ font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+    .total-value {{ font-size: 24px; font-weight: bold; color: #FFF; }}
+
     .logo-container {{ display: flex; justify-content: center; padding-bottom: 30px; border-bottom: 1px solid #333333; margin-bottom: 30px; }}
     .logo-container img {{ width: 100%; max-width: 500px; }}
     </style>
@@ -737,13 +749,41 @@ def render_organigramma():
     with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS & R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
     with c3: st.markdown('<div class="org-card"><span class="role-label">GARE & MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
 
-    # --- REINSERITO LIVELLO 3 CORRETTO (OPERATIVO - I 4 PM) ---
-    st.markdown("<div class='org-header'>LIVELLO 3: OPERATIVO (RESPONSABILI DI SETTORE)</div>", unsafe_allow_html=True)
-    c_pm1, c_pm2, c_pm3, c_pm4 = st.columns(4)
-    with c_pm1: st.markdown('<div class="org-card"><span class="role-label">ARCHEOLOGIA PREV.</span><div class="name-text">LORENZO MARASCO</div></div>', unsafe_allow_html=True)
-    with c_pm2: st.markdown('<div class="org-card"><span class="role-label">ARCH. ARCHITETTURA</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
-    with c_pm3: st.markdown('<div class="org-card"><span class="role-label">RILIEVO BIM</span><div class="name-text">ANDREA LUMINI</div></div>', unsafe_allow_html=True)
-    with c_pm4: st.markdown('<div class="org-card"><span class="role-label">RILIEVO 3D</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
+    # --- LIVELLO 3 CORRETTO (OPERATIVO) ---
+    st.markdown("<div class='org-header' style='font-size: 18px;'>LIVELLO 3: OPERATIVO</div>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4, gap="small")
+    with c1: 
+        st.markdown("""
+        <div class="org-card" style="min-height: 200px;">
+            <span class="role-label">PROJECT MANAGER</span>
+            <div class="card-subtitle" style="margin: 5px 0;">ARCHEOLOGIA PREVENTIVA</div>
+            <div class="name-text">LORENZO MARASCO</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c2: 
+        st.markdown("""
+        <div class="org-card" style="min-height: 200px;">
+            <span class="role-label">PROJECT MANAGER</span>
+            <div class="card-subtitle" style="margin: 5px 0;">ARCHEOLOGIA DELL'ARCHITETTURA</div>
+            <div class="name-text">ANDREA ARRIGHETTI</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c3: 
+        st.markdown("""
+        <div class="org-card" style="min-height: 200px;">
+            <span class="role-label">PROJECT MANAGER</span>
+            <div class="card-subtitle" style="margin: 5px 0;">RILIEVO DIGITALE & BIM</div>
+            <div class="name-text">ANDREA LUMINI</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c4: 
+        st.markdown("""
+        <div class="org-card" style="min-height: 200px;">
+            <span class="role-label">PROJECT MANAGER</span>
+            <div class="card-subtitle" style="margin: 5px 0;">RILIEVO DIGITALE & 3D</div>
+            <div class="name-text">MARCO REPOLE</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # --- 7. ROUTING ---
 with st.sidebar:
