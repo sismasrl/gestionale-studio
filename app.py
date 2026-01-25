@@ -730,8 +730,16 @@ def render_organigramma():
         <div class="org-row"><span class="role-label">Consigliere</span><div class="name-text">MARCO REPOLE</div></div></div>""", unsafe_allow_html=True)
     with c_op: 
         st.markdown("""<div class="card-mid"><div class="card-subtitle">COMITATO<br>ESECUTIVO</div>
-        <div class="org-row"><span class="role-label">ARCHEOLOGIA</span><div class="name-text">ARRIGHETTI / MARASCO</div></div>
-        <div class="org-row"><span class="role-label">RILIEVO</span><div class="name-text">LUMINI / REPOLE</div></div></div>""", unsafe_allow_html=True)
+        <div class="org-row">
+            <span class="role-label">ARCHEOLOGIA</span>
+            <div class="name-text">ANDREA ARRIGHETTI</div>
+            <div class="name-text">LORENZO MARASCO</div>
+        </div>
+        <div class="org-row">
+            <span class="role-label">RILIEVO</span>
+            <div class="name-text">ANDREA LUMINI</div>
+            <div class="name-text">MARCO REPOLE</div>
+        </div></div>""", unsafe_allow_html=True)
     with c_cs:
          st.markdown("""<div class="card-mid"><div class="card-subtitle">COMITATO<br>SCIENTIFICO</div>
         <div class="org-row"><span class="role-label">Membro</span><div class="name-text">STEFANO BERTOCCI</div></div>
@@ -749,7 +757,7 @@ def render_organigramma():
     with c2: st.markdown('<div class="org-card"><span class="role-label">BUSINESS & R&D</span><div class="name-text">ANDREA ARRIGHETTI</div></div>', unsafe_allow_html=True)
     with c3: st.markdown('<div class="org-card"><span class="role-label">GARE & MARKETING</span><div class="name-text">MARCO REPOLE</div></div>', unsafe_allow_html=True)
 
-    # --- LIVELLO 3 CORRETTO (OPERATIVO) ---
+    # --- LIVELLO 3 CORRETTO (DA ULTIMA RICHIESTA) ---
     st.markdown("<div class='org-header' style='font-size: 18px;'>LIVELLO 3: OPERATIVO</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1: 
