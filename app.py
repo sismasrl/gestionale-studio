@@ -547,7 +547,7 @@ def render_commessa_form(data=None):
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_societa"]), step=1, format="%d", key="num_soc", label_visibility="collapsed")
                 if new_perc_soc != st.session_state["perc_societa"]:
-                    st.session_state["perc_societa"] = new_perc_societa
+                    st.session_state["perc_societa"] = new_perc_soc
                     st.rerun()
             val_iva = tot_lordo - tot_net
             with b3: 
@@ -597,6 +597,63 @@ def render_commessa_form(data=None):
         with st.expander("⚠️ ZONA PERICOLO"):
             if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): elimina_record(codice, "Foglio1", "Codice")
 
+# --- 4. CLIENTI PAGE ---
+def render_clienti_page():
+    st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    c_form, c_list = st.columns([1, 2], gap="large")
+    with c_form:
+        st.markdown("<h3 style='text-align: center;'>GESTIONE</h3>", unsafe_allow_html=True)
+        df = carica_dati("Clienti")
+        nomi = sorted(df["Denominazione"].tolist()) if not df.empty else []
+        sel = st.selectbox("Modifica:", [""] + nomi)
+        d = df[df["Denominazione"] == sel].iloc[0].to_dict() if sel and not df.empty else {}
+        
+        with st.form("frm_cli"):
+            den = st.text_input("Denominazione *", value=d.get("Denominazione", ""))
+            c1, c2 = st.columns(2)
+            piva = c1.text_input("P.IVA", value=d.get("P_IVA", ""))
+            sede = c2.text_input("Sede", value=d.get("Sede", ""))
+            c3, c4 = st.columns(2)
+            ref = c3.text_input("Referente", value=d.get("Referente", ""))
+            tel = c4.text_input("Tel", value=d.get("Telefono", ""))
+            mail = st.text_input("Email", value=d.get("Email", ""))
+            c5, c6 = st.columns(2)
+            idx_cont = SOCI_OPZIONI.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in SOCI_OPZIONI else 0
+            cont = c5.selectbox("Contatto SISMA", [""] + SOCI_OPZIONI, index=idx_cont)
+            sets = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
+            idx_set = sets.index(d.get("Settore")) if d.get("Settore") in sets else 3
+            sett = c6.selectbox("Settore", sets, index=idx_set)
+            st.markdown("<br>", unsafe_allow_html=True)
+            c_att, c_dis = st.columns(2)
+            curr_active = str(d.get("Attivo", "TRUE")).upper() == "TRUE"
+            chk_active = c_att.checkbox("Attivo", value=curr_active)
+            chk_inactive = c_dis.checkbox("Non Attivo", value=not curr_active)
+            note = st.text_area("Note", value=d.get("Note", ""))
+            if st.form_submit_button("SALVA"):
+                if not den: st.error("Nome obbligatorio")
+                else:
+                    final_state = "FALSE" if chk_inactive else ("TRUE" if chk_active else "FALSE")
+                    rec = {"Denominazione": den, "P_IVA": piva, "Sede": sede, "Referente": ref, "Telefono": tel, "Email": mail, "Contatto_SISMA": cont, "Settore": sett, "Attivo": final_state, "Note": note}
+                    salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
+                    st.rerun()
+        if sel and st.button("ELIMINA CLIENTE"): elimina_record(sel, "Clienti", "Denominazione")
+
+    with c_list:
+        st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
+        if not df.empty:
+            df_view = df.copy()
+            df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
+            df_view["Non Attivo"] = ~df_view["Attivo"] 
+            target_cols = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Settore", "Attivo"]
+            final_cols = [c for c in target_cols if c in df_view.columns]
+            st.dataframe(df_view[final_cols], column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, use_container_width=True, hide_index=True)
+            
+            buffer_cli = io.BytesIO()
+            with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
+                df_view.to_excel(writer_cli, index=False, sheet_name='Rubrica')
+            st.download_button(label="📥 BACKUP CLIENTI", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel")
+
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     df = carica_dati("Foglio1")
@@ -610,13 +667,13 @@ def render_dashboard():
         
         # Filtro Anno
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
-        anni_opts = ["TUTTI"] + anni_disponibili
+        anni_opts = ["TOTALE"] + anni_disponibili
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
         # Filtraggio
-        if sel_anno != "TUTTI":
+        if sel_anno != "TOTALE":
             df_kpi = df[df["Anno"] == sel_anno]
         else:
             df_kpi = df
@@ -680,11 +737,10 @@ def render_dashboard():
 
     # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
     if not df.empty:
-        # Aggiungiamo una colonna per la selezione
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti per selezione rapida
-        c_sel_all, c_deselect, c_space = st.columns([1, 1, 4])
+        # Pulsanti Compatti
+        c_sel_all, c_deselect, c_space = st.columns([0.5, 0.5, 4])
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
             st.rerun()
@@ -692,7 +748,7 @@ def render_dashboard():
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        # Preparazione DF per editor
+        # Prep DF
         df_to_edit = df.copy()
         df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
 
@@ -702,7 +758,7 @@ def render_dashboard():
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
-                "Seleziona": st.column_config.CheckboxColumn("Elimina?", default=False),
+                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
                 "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
                 "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
             },
