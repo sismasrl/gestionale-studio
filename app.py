@@ -712,7 +712,10 @@ def render_organigramma():
             </div>""", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    c_left, c_chart, c_right = st.columns([1, 2, 1])
+    
+    # MODIFICA: LAYOUT GRAFICO + TABELLA DATI
+    c_chart, c_info = st.columns([1.2, 1], gap="large")
+    
     with c_chart:
         petrol_palette = ['#082a33', '#0c3a47', '#14505f', '#1d6677', '#287d8f', '#3695a7', '#46adbf']
         chart = alt.Chart(df_s).mark_arc(innerRadius=70, outerRadius=110).encode(
@@ -721,6 +724,27 @@ def render_organigramma():
             tooltip=["Nome", "Quota", "Perc"]
         ).properties(height=350).configure(background='#000000').configure_view(strokeWidth=0)
         st.altair_chart(chart, use_container_width=True)
+
+    with c_info:
+        st.markdown("""
+        <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 20px; height: 100%; font-family: 'Helvetica Neue', sans-serif;">
+            <div style="color: #427e72; font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">DATI SOCIETARI</div>
+            <table style="width: 100%; border-collapse: collapse; color: #DDD; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888; width: 35%;">Ragione sociale:</td><td style="padding: 8px 0;">SISMA - Sistemi Integrati di Monitoraggio Architettonico s.r.l.</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Sede Legale:</td><td style="padding: 8px 0;">Piazza Togliatti, 40, Scandicci (FI) – 50018</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">CF/P.IVA:</td><td style="padding: 8px 0;">06557660484</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Codice Destinatario:</td><td style="padding: 8px 0;">KRRH6B9</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Codice ATECO:</td><td style="padding: 8px 0;">74.90.99 - altre attività professionali nca</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Capitale Sociale:</td><td style="padding: 8px 0;">8000,00 €</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Inizio Attività:</td><td style="padding: 8px 0;">09/06/2015</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">N. REA:</td><td style="padding: 8px 0;">FI – 637912</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">PIC:</td><td style="padding: 8px 0;">919267546</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">PEC:</td><td style="padding: 8px 0;">sisma2015@pec.cgn.it</td></tr>
+                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">E-mail:</td><td style="padding: 8px 0;">info@sisma-srl.com / archeologia@sisma-srl.com</td></tr>
+                <tr><td style="padding: 8px 0; font-weight: bold; color: #888;">Sito web:</td><td style="padding: 8px 0;">www.sisma-srl.com</td></tr>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
 
     c_cda, c_op, c_cs = st.columns(3, gap="medium")
     with c_cda: 
@@ -749,7 +773,7 @@ def render_organigramma():
     st.markdown("<div class='org-header'>LIVELLO 2: GESTIONALE</div>", unsafe_allow_html=True)
     st.markdown("""<div style="display:flex; justify-content:center; margin-bottom:20px; width:100%;">
             <div class="org-card" style="width: 400px; padding: 30px;">
-                <span class="role-label">DIREZIONE GENERALE</span><div class="name-text" style="font-weight:bold;">LORENZO MARASCO</div>
+                <span class="role-label">DIREZIONE GENERALE - RELAZIONI ESTERNE</span><div class="name-text" style="font-weight:bold;">LORENZO MARASCO</div>
             </div></div>""", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
