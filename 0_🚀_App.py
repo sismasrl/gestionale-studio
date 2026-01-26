@@ -11,6 +11,7 @@ import io
 import re
 
 # --- 1. SETUP PAGINA ---
+# Nota: Rinomina questo file in "0_🚀_App.py" per vedere l'icona nel menu laterale
 st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_state="expanded")
 
 # --- 1.1 SISTEMA DI LOGIN ---
@@ -84,10 +85,22 @@ st.markdown(f"""
         background-color: transparent !important; border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 20px !important;
     }}
     
-    /* BUTTONS */
+    /* BUTTONS STANDARD */
     div.stButton > button {{
         background-color: {COL_DEEP} !important; color: #FFFFFF !important; 
         border: 1px solid {COL_ACCENT} !important; border-radius: 4px; 
+    }}
+
+    /* CSS SPECIFICO PER I PULSANTI PICCOLI DELLA DASHBOARD */
+    /* Targettiamo i bottoni dentro le colonne piccole */
+    div[data-testid="column"] button p {{
+        font-size: 12px !important;
+    }}
+    div[data-testid="column"] button {{
+        min-height: 0px !important;
+        height: 35px !important;
+        padding-top: 0px !important;
+        padding-bottom: 0px !important;
     }}
 
     /* ORGANIGRAMMA STYLES */
@@ -100,7 +113,6 @@ st.markdown(f"""
         border-radius: 4px; padding: 25px 20px; text-align: center; margin-bottom: 15px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
     }}
-    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 */
     .card-mid {{
         background-color: #111111; border: 1px solid #333; border-top: 3px solid {COL_DEEP}; 
         border-radius: 4px; padding: 25px 20px; 
@@ -122,7 +134,7 @@ st.markdown(f"""
     }}
     .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
     
-    /* TOTALI BOX (STILE PETROLIO) */
+    /* TOTALI BOX */
     .total-box-standard {{
         background-color: {COL_DEEP}; border: 1px solid {COL_ACCENT}; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
     }}
@@ -211,7 +223,6 @@ def elimina_record_batch(lista_codici, sheet_name="Foglio1", key_field="Codice")
     df = carica_dati(sheet_name)
     if not df.empty and key_field in df.columns:
         lista_str = [str(c) for c in lista_codici]
-        # Tieni solo le righe che NON sono nella lista da eliminare
         df_final = df[~df[key_field].astype(str).isin(lista_str)]
         wks.clear()
         wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
@@ -219,20 +230,15 @@ def elimina_record_batch(lista_codici, sheet_name="Foglio1", key_field="Codice")
         time.sleep(1)
         st.rerun()
 
-# Funzione per formattazione italiana: € 1.000,00
 def fmt_euro_it(valore):
     try:
         valore = float(valore)
-        # Formatta tipo US: 1,000.00
         s = "{:,.2f}".format(valore)
-        # Scambia , con X, . con , e X con .
         s = s.replace(",", "X").replace(".", ",").replace("X", ".")
         return f"€ {s}"
-    except:
-        return "€ 0,00"
+    except: return "€ 0,00"
 
 def fmt_euro(valore):
-    # Wrapper veloce
     try: valore = float(valore)
     except: valore = 0.0
     return f"€ {valore:,.2f}"
@@ -597,7 +603,7 @@ def render_commessa_form(data=None):
         with st.expander("⚠️ ZONA PERICOLO"):
             if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): elimina_record(codice, "Foglio1", "Codice")
 
-# --- 4. CLIENTI PAGE ---
+# --- 4. CLIENTI PAGE (DEFINIZIONE FUNZIONE) ---
 def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -739,8 +745,8 @@ def render_dashboard():
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Compatti
-        c_sel_all, c_deselect, c_space = st.columns([0.5, 0.5, 4])
+        # Pulsanti Compatti (Colonne strette 0.6)
+        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
             st.rerun()
