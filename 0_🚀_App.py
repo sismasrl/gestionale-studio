@@ -199,9 +199,20 @@ def salva_record(record, sheet_name="Foglio1", key_field="Codice", mode="new"):
     wks = get_worksheet(sheet_name)
     df = carica_dati(sheet_name)
     new_row = pd.DataFrame([record])
+    
+    # Gestione aggiornamento: rimuove la vecchia riga se esiste
     if mode == "update" and not df.empty and key_field in df.columns:
         df = df[df[key_field].astype(str) != str(record[key_field])]
+    
+    # Unisce i dati
     df_final = pd.concat([df, new_row], ignore_index=True)
+    
+    # --- CORREZIONE ERRORE JSON ---
+    # Sostituisce i valori 'NaN' (Not a Number) con stringhe vuote ""
+    # Questo impedisce l'errore "InvalidJSONError"
+    df_final = df_final.fillna("")
+    # ------------------------------
+
     wks.clear()
     wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
     st.toast("SALVATAGGIO RIUSCITO", icon="✅")
@@ -965,3 +976,4 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
