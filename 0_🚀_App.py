@@ -45,10 +45,9 @@ if not check_password():
 COL_DEEP = "#0c3a47"
 COL_ACCENT = "#427e72"
 
-# MODIFICA RICHIESTA: NOME COGNOME
 SOCI_OPZIONI = [
-    "ANDREA ARRIGHETTI", "STEFANO BERTOCCI", "ANDREA LUMINI", 
-    "LORENZO MARASCO", "GIOVANNI MINUTOLI", "GIOVANNI PANCANI", "MARCO REPOLE"
+    "ARRIGHETTI ANDREA", "BERTOCCI STEFANO", "LUMINI ANDREA", 
+    "MARASCO LORENZO", "MINUTOLI GIOVANNI", "PANCANI GIOVANNI", "REPOLE MARCO"
 ]
 
 SERVIZI_LIST = [
@@ -93,6 +92,7 @@ st.markdown(f"""
     }}
 
     /* CSS SPECIFICO PER I PULSANTI PICCOLI DELLA DASHBOARD */
+    /* Targettiamo i bottoni dentro le colonne piccole */
     div[data-testid="column"] button p {{
         font-size: 12px !important;
     }}
@@ -199,20 +199,26 @@ def salva_record(record, sheet_name="Foglio1", key_field="Codice", mode="new"):
     wks = get_worksheet(sheet_name)
     df = carica_dati(sheet_name)
     new_row = pd.DataFrame([record])
-    
     if mode == "update" and not df.empty and key_field in df.columns:
         df = df[df[key_field].astype(str) != str(record[key_field])]
-    
     df_final = pd.concat([df, new_row], ignore_index=True)
-    
-    # FIX JSON ERROR: Rimuove NaN
-    df_final = df_final.fillna("")
-    
     wks.clear()
     wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
     st.toast("SALVATAGGIO RIUSCITO", icon="✅")
 
+def elimina_record(valore_chiave, sheet_name="Foglio1", key_field="Codice"):
+    wks = get_worksheet(sheet_name)
+    df = carica_dati(sheet_name)
+    if not df.empty and key_field in df.columns:
+        df_final = df[df[key_field].astype(str) != str(valore_chiave)]
+        wks.clear()
+        wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
+        st.toast(f"ELEMENTO ELIMINATO", icon="🗑️")
+        time.sleep(1)
+        st.rerun()
+
 def elimina_record_batch(lista_codici, sheet_name="Foglio1", key_field="Codice"):
+    """Elimina una lista di record in una sola operazione."""
     wks = get_worksheet(sheet_name)
     df = carica_dati(sheet_name)
     if not df.empty and key_field in df.columns:
@@ -239,11 +245,7 @@ def fmt_euro(valore):
 
 def importa_excel_batch(uploaded_file):
     try:
-        df_new = pd.read_excel(uploaded_file) # oppure read_csv se usi csv
-        if "Codice" not in df_new.columns:
-             # Prova a leggere csv se excel fallisce o ha formato strano
-             df_new = pd.read_csv(uploaded_file)
-
+        df_new = pd.read_excel(uploaded_file)
         df_existing = carica_dati("Foglio1")
         existing_codes = []
         if not df_existing.empty and "Codice" in df_existing.columns:
@@ -266,24 +268,13 @@ def importa_excel_batch(uploaded_file):
                 val = row.get(col, "")
                 if pd.isna(val): val = ""
                 rec[col] = val
-            
-            # Valori numerici sicuri
             rec["Portatore_Val"] = 0.0
             rec["Costi Società"] = 0.0
             rec["Utile Netto"] = 0.0
-            
-            # Recupera colonne numeriche se esistono
-            if "Portatore_Val" in row: rec["Portatore_Val"] = row["Portatore_Val"]
-            if "Costi Società" in row: rec["Costi Società"] = row["Costi Società"]
-            if "Utile Netto" in row: rec["Utile Netto"] = row["Utile Netto"]
-
             rec["Data Inserimento"] = str(date.today())
-            
-            # Gestione JSON
             rec["Dati_JSON"] = json.dumps({
                 "incassi": [], "soci": [], "collab": [], "spese": [], 
-                "servizi": [], "percentages": {"portatore": 10, "societa": 10},
-                "dettagli": ""
+                "servizi": [], "percentages": {"portatore": 10, "societa": 10}
             })
             if "Dati_JSON" in row and pd.notna(row["Dati_JSON"]):
                  rec["Dati_JSON"] = row["Dati_JSON"]
@@ -327,8 +318,6 @@ def render_commessa_form(data=None):
         else:
              lista_clienti = sorted(df_clienti["Denominazione"].unique().tolist())
 
-    val_dettagli = ""
-
     if is_edit:
         val_codice = data["Codice"]
         val_anno = int(data.get("Anno", 2024))
@@ -338,7 +327,6 @@ def render_commessa_form(data=None):
             if "Dati_JSON" in data and data["Dati_JSON"]:
                 jdata = json.loads(data["Dati_JSON"])
                 val_servizi = jdata.get("servizi", [])
-                val_dettagli = jdata.get("dettagli", "")
                 if "percentages" in jdata:
                     st.session_state["perc_portatore"] = int(jdata["percentages"].get("portatore", 10))
                     st.session_state["perc_societa"] = int(jdata["percentages"].get("societa", 10))
@@ -390,13 +378,7 @@ def render_commessa_form(data=None):
         st.markdown("<br>", unsafe_allow_html=True)
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto, placeholder="Es. Rilievo Chiesa...")
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        # MODIFICA RICHIESTA: DETTAGLI ACCANTO A SERVIZI
-        cs1, cs2 = st.columns(2)
-        with cs1:
-            servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
-        with cs2:
-            dettagli_commessa = st.text_area("Dettagli", value=val_dettagli, height=100)
+        servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
 
     with st.expander("02 // COMMITTENZA", expanded=True):
         def on_cliente_change():
@@ -462,10 +444,9 @@ def render_commessa_form(data=None):
             except: pass
         st.session_state["stato_incassi"] = df_init
     
-    # DATAFRAMES DEFAULT COSTI con DATA
-    df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data": date.today(), "Note": ""}])
-    df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data": date.today(), "Note": ""}])
-    df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data": date.today(), "Note": ""}])
+    df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
+    df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
+    df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
 
     if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
         try:
@@ -473,32 +454,20 @@ def render_commessa_form(data=None):
             if "soci" in jdata: 
                 df_temp = pd.DataFrame(jdata["soci"])
                 if "Ruolo" in df_temp.columns: df_temp = df_temp.rename(columns={"Ruolo": "Mansione"})
-                # Assicuriamo che ci sia Data
-                if "Data" not in df_temp.columns: df_temp["Data"] = date.today()
-                else: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
-
-                expected = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
+                expected = ["Socio", "Mansione", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
                 df_soci_def = df_temp[expected]
-            
             if "collab" in jdata: 
                 df_temp = pd.DataFrame(jdata["collab"])
                 if "Nome" in df_temp.columns: df_temp = df_temp.rename(columns={"Nome": "Collaboratore"})
-                if "Data" not in df_temp.columns: df_temp["Data"] = date.today()
-                else: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
-
-                expected = ["Collaboratore", "Mansione", "Importo", "Stato", "Data", "Note"]
+                expected = ["Collaboratore", "Mansione", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
                 df_collab_def = df_temp[expected]
-            
             if "spese" in jdata: 
                 df_temp = pd.DataFrame(jdata["spese"])
-                if "Data" not in df_temp.columns: df_temp["Data"] = date.today()
-                else: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
-                
-                expected = ["Voce", "Importo", "Stato", "Data", "Note"]
+                expected = ["Voce", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
                 df_spese_def = df_temp[expected]
@@ -514,22 +483,7 @@ def render_commessa_form(data=None):
             "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="large")
         }
-        
-        # MODIFICA RICHIESTA: ORDINE COLONNE (Lordo accanto a Netto)
-        order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
-        
-        # Riordina dataframe se necessario o usa column_order (ma data_editor con column_order a volte è buggato, meglio riordinare df)
-        # Assicuriamoci che tutte le colonne esistano
-        for c in order_cols:
-            if c not in st.session_state["stato_incassi"].columns: st.session_state["stato_incassi"][c] = ""
-        
-        edited_incassi = st.data_editor(
-            st.session_state["stato_incassi"][order_cols], 
-            num_rows="dynamic", 
-            column_config=col_cfg, 
-            use_container_width=True, 
-            key="ed_inc"
-        )
+        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, use_container_width=True, key="ed_inc")
         
         ricalcolo = edited_incassi.copy()
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
@@ -552,16 +506,12 @@ def render_commessa_form(data=None):
 
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
-        
-        # MODIFICA RICHIESTA: AGGIUNTA COLONNA DATA
-        
         st.markdown("### SOCI")
         soci_cfg = {
             "Socio": st.column_config.SelectboxColumn("Socio ▼", options=SOCI_OPZIONI, required=True, width="medium"),
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Conteggiato", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
@@ -572,7 +522,6 @@ def render_commessa_form(data=None):
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
         edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
@@ -582,7 +531,6 @@ def render_commessa_form(data=None):
             "Voce": st.column_config.TextColumn("Voce", width="large"), 
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Pagato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
@@ -628,14 +576,12 @@ def render_commessa_form(data=None):
                 }
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # SALVATAGGIO JSON CON DETTAGLI E NUOVE COLONNE
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
                 "soci": edited_soci.to_dict('records'),
                 "collab": edited_collab.to_dict('records'), 
                 "spese": edited_spese.to_dict('records'),
                 "servizi": servizi_scelti,
-                "dettagli": dettagli_commessa,
                 "percentages": { "portatore": st.session_state["perc_portatore"], "societa": st.session_state["perc_societa"] }
             }, default=str)
             
@@ -761,7 +707,7 @@ def main():
         
         st.markdown("---")
         st.markdown("**SISMA MANAGER**")
-        st.caption("Ver. 2.6 - 2026")
+        st.caption("Ver. 2.5 - 2026")
 
     # Routing Pagine
     if page == "📊 DASHBOARD":
@@ -787,7 +733,7 @@ def main():
     elif page == "📥 IMPORTA EXCEL":
         st.title("IMPORTAZIONE DATI MASSIVA")
         st.info("Carica un file Excel (.xlsx) con le colonne corrette (Codice, Nome Commessa, ecc.)")
-        f = st.file_uploader("Carica Excel", type=["xlsx", "csv"])
+        f = st.file_uploader("Carica Excel", type=["xlsx"])
         if f:
             if st.button("AVVIA IMPORTAZIONE"):
                 importa_excel_batch(f)
