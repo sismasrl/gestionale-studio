@@ -713,42 +713,81 @@ def render_organigramma():
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # MODIFICA: LAYOUT SCAMBIATO (Tabella a SX, Grafico a DX) e GRAFICO CENTRATO
-    c_table, c_chart = st.columns([1, 1.2], gap="large")
+    # LAYOUT 50% - 50%
+    c_table, c_chart = st.columns([1, 1], gap="large")
     
     with c_table:
-        # Aggiunto margin-bottom per spaziare dai box sottostanti
+        # STILE TABELLA AGGIORNATO:
+        # - width: 25% per la prima colonna (etichette)
+        # - padding: 10px 20px (più spazio laterale e verticale)
         st.markdown("""
-        <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 20px; height: 100%; font-family: 'Helvetica Neue', sans-serif; margin-bottom: 50px;">
-            <div style="color: #427e72; font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">DATI SOCIETARI</div>
-            <table style="width: 100%; border-collapse: collapse; color: #DDD; font-size: 14px;">
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888; width: 35%;">Ragione sociale:</td><td style="padding: 8px 0;">SISMA - Sistemi Integrati di Monitoraggio Architettonico s.r.l.</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Sede Legale:</td><td style="padding: 8px 0;">Piazza Togliatti, 40, Scandicci (FI) – 50018</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">CF/P.IVA:</td><td style="padding: 8px 0;">06557660484</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Codice Destinatario:</td><td style="padding: 8px 0;">KRRH6B9</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Codice ATECO:</td><td style="padding: 8px 0;">74.90.99 - altre attività professionali nca</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Capitale Sociale:</td><td style="padding: 8px 0;">8000,00 €</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">Inizio Attività:</td><td style="padding: 8px 0;">09/06/2015</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">N. REA:</td><td style="padding: 8px 0;">FI – 637912</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">PIC:</td><td style="padding: 8px 0;">919267546</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">PEC:</td><td style="padding: 8px 0;">sisma2015@pec.cgn.it</td></tr>
-                <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888;">E-mail:</td><td style="padding: 8px 0;">info@sisma-srl.com / archeologia@sisma-srl.com</td></tr>
-                <tr><td style="padding: 8px 0; font-weight: bold; color: #888;">Sito web:</td><td style="padding: 8px 0;">www.sisma-srl.com</td></tr>
+        <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 30px; height: 100%; font-family: 'Helvetica Neue', sans-serif; margin-bottom: 50px;">
+            <div style="color: #427e72; font-size: 20px; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; text-transform: uppercase;">DATI SOCIETARI</div>
+            <table style="width: 100%; border-collapse: collapse; color: #DDD; font-size: 15px;">
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; width: 25%; border-right: 1px solid #222;">Ragione sociale</td>
+                    <td style="padding: 10px 20px;">SISMA - Sistemi Integrati di Monitoraggio Architettonico s.r.l.</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Sede Legale</td>
+                    <td style="padding: 10px 20px;">Piazza Togliatti, 40, Scandicci (FI) – 50018</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">CF/P.IVA</td>
+                    <td style="padding: 10px 20px;">06557660484</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Cod. Destinatario</td>
+                    <td style="padding: 10px 20px;">KRRH6B9</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Codice ATECO</td>
+                    <td style="padding: 10px 20px;">74.90.99 - altre attività professionali nca</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Capitale Soc.</td>
+                    <td style="padding: 10px 20px;">8000,00 €</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Inizio Attività</td>
+                    <td style="padding: 10px 20px;">09/06/2015</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">N. REA</td>
+                    <td style="padding: 10px 20px;">FI – 637912</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">PIC</td>
+                    <td style="padding: 10px 20px;">919267546</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">PEC</td>
+                    <td style="padding: 10px 20px;">sisma2015@pec.cgn.it</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">E-mail</td>
+                    <td style="padding: 10px 20px;">info@sisma-srl.com / archeologia@sisma-srl.com</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px 20px; font-weight: bold; color: #888; border-right: 1px solid #222;">Sito web</td>
+                    <td style="padding: 10px 20px;">www.sisma-srl.com</td>
+                </tr>
             </table>
         </div>
         """, unsafe_allow_html=True)
 
     with c_chart:
-        # GRAFICO INGRANDITO: InnerRadius 70->85, Outer 110->135, Height 350->450
+        # GRAFICO ENORME
+        # innerRadius aumentato a 120 (era 85)
+        # outerRadius aumentato a 190 (era 135)
+        # Height aumentata a 600 (era 450)
         petrol_palette = ['#082a33', '#0c3a47', '#14505f', '#1d6677', '#287d8f', '#3695a7', '#46adbf']
-        chart = alt.Chart(df_s).mark_arc(innerRadius=85, outerRadius=135).encode(
+        chart = alt.Chart(df_s).mark_arc(innerRadius=120, outerRadius=190).encode(
             theta=alt.Theta("Quota", stack=True),
             color=alt.Color("Nome", legend=None, scale=alt.Scale(range=petrol_palette)),
             tooltip=["Nome", "Quota", "Perc"]
-        ).properties(height=450).configure(background='#000000').configure_view(strokeWidth=0)
+        ).properties(height=600).configure(background='#000000').configure_view(strokeWidth=0)
         
-        # Spacer per centratura verticale approssimativa rispetto alla tabella (se necessario)
-        st.markdown("<br>", unsafe_allow_html=True)
         st.altair_chart(chart, use_container_width=True)
 
     c_cda, c_op, c_cs = st.columns(3, gap="medium")
@@ -833,3 +872,4 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
