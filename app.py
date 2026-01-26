@@ -121,7 +121,7 @@ st.markdown(f"""
     }}
     .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
     
-    /* TOTALI BOX (MODIFICATO: COLORE PETROLIO) */
+    /* TOTALI BOX */
     .total-box-standard {{
         background-color: {COL_DEEP}; border: 1px solid {COL_ACCENT}; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
     }}
@@ -713,21 +713,13 @@ def render_organigramma():
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # MODIFICA: LAYOUT GRAFICO + TABELLA DATI
-    c_chart, c_info = st.columns([1.2, 1], gap="large")
+    # MODIFICA: LAYOUT SCAMBIATO (Tabella a SX, Grafico a DX) e GRAFICO CENTRATO
+    c_table, c_chart = st.columns([1, 1.2], gap="large")
     
-    with c_chart:
-        petrol_palette = ['#082a33', '#0c3a47', '#14505f', '#1d6677', '#287d8f', '#3695a7', '#46adbf']
-        chart = alt.Chart(df_s).mark_arc(innerRadius=70, outerRadius=110).encode(
-            theta=alt.Theta("Quota", stack=True),
-            color=alt.Color("Nome", legend=None, scale=alt.Scale(range=petrol_palette)),
-            tooltip=["Nome", "Quota", "Perc"]
-        ).properties(height=350).configure(background='#000000').configure_view(strokeWidth=0)
-        st.altair_chart(chart, use_container_width=True)
-
-    with c_info:
+    with c_table:
+        # Aggiunto margin-bottom per spaziare dai box sottostanti
         st.markdown("""
-        <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 20px; height: 100%; font-family: 'Helvetica Neue', sans-serif;">
+        <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 20px; height: 100%; font-family: 'Helvetica Neue', sans-serif; margin-bottom: 50px;">
             <div style="color: #427e72; font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">DATI SOCIETARI</div>
             <table style="width: 100%; border-collapse: collapse; color: #DDD; font-size: 14px;">
                 <tr style="border-bottom: 1px solid #222;"><td style="padding: 8px 0; font-weight: bold; color: #888; width: 35%;">Ragione sociale:</td><td style="padding: 8px 0;">SISMA - Sistemi Integrati di Monitoraggio Architettonico s.r.l.</td></tr>
@@ -745,6 +737,19 @@ def render_organigramma():
             </table>
         </div>
         """, unsafe_allow_html=True)
+
+    with c_chart:
+        # GRAFICO INGRANDITO: InnerRadius 70->85, Outer 110->135, Height 350->450
+        petrol_palette = ['#082a33', '#0c3a47', '#14505f', '#1d6677', '#287d8f', '#3695a7', '#46adbf']
+        chart = alt.Chart(df_s).mark_arc(innerRadius=85, outerRadius=135).encode(
+            theta=alt.Theta("Quota", stack=True),
+            color=alt.Color("Nome", legend=None, scale=alt.Scale(range=petrol_palette)),
+            tooltip=["Nome", "Quota", "Perc"]
+        ).properties(height=450).configure(background='#000000').configure_view(strokeWidth=0)
+        
+        # Spacer per centratura verticale approssimativa rispetto alla tabella (se necessario)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.altair_chart(chart, use_container_width=True)
 
     c_cda, c_op, c_cs = st.columns(3, gap="medium")
     with c_cda: 
