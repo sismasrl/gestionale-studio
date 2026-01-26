@@ -8,6 +8,7 @@ import json
 import os
 import time
 import io
+import re
 
 # --- 1. SETUP PAGINA ---
 st.set_page_config(page_title="SISMA MANAGER", layout="wide", initial_sidebar_state="expanded")
@@ -99,11 +100,11 @@ st.markdown(f"""
         border-radius: 4px; padding: 25px 20px; text-align: center; margin-bottom: 15px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
     }}
-    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 (CdA, Esecutivo, Scientifico) */
+    /* FIX ALTEZZA UGUALE PER I BOX DI LIVELLO 2 */
     .card-mid {{
         background-color: #111111; border: 1px solid #333; border-top: 3px solid {COL_DEEP}; 
         border-radius: 4px; padding: 25px 20px; 
-        height: 380px; /* ALTEZZA FISSA FORZATA */
+        height: 380px; 
         display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     }}
     .org-row {{
@@ -121,7 +122,7 @@ st.markdown(f"""
     }}
     .name-text {{ font-size: 18px; color: #DDD; font-weight: 500; margin-bottom: 5px; display: block; }}
     
-    /* TOTALI BOX */
+    /* TOTALI BOX (STILE PETROLIO) */
     .total-box-standard {{
         background-color: {COL_DEEP}; border: 1px solid {COL_ACCENT}; padding: 15px; border-radius: 5px; text-align: center; margin-bottom: 10px;
     }}
@@ -139,7 +140,7 @@ st.markdown(f"""
 LOGO_URL = "https://drive.google.com/thumbnail?id=1xKRvfMtlXd4vRpk_OlFE4MmkC3S7mZ4H&sz=w1000"
 st.markdown(f'<div class="logo-container"><img src="{LOGO_URL}"></div>', unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATI (GSPREAD - CONNESSIONE ROBUSTA) ---
+# --- 2. GESTIONE DATI (GSPREAD) ---
 SHEET_ID = "1vfcB5CJ6J7Vgmw7JcDleR4MDEmw_kJTm4nXak1Lsg8E" 
 
 def get_worksheet(sheet_name="Foglio1"):
@@ -204,7 +205,34 @@ def elimina_record(valore_chiave, sheet_name="Foglio1", key_field="Codice"):
         time.sleep(1)
         st.rerun()
 
+def elimina_record_batch(lista_codici, sheet_name="Foglio1", key_field="Codice"):
+    """Elimina una lista di record in una sola operazione."""
+    wks = get_worksheet(sheet_name)
+    df = carica_dati(sheet_name)
+    if not df.empty and key_field in df.columns:
+        lista_str = [str(c) for c in lista_codici]
+        # Tieni solo le righe che NON sono nella lista da eliminare
+        df_final = df[~df[key_field].astype(str).isin(lista_str)]
+        wks.clear()
+        wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
+        st.toast(f"ELIMINATI {len(lista_codici)} ELEMENTI", icon="🗑️")
+        time.sleep(1)
+        st.rerun()
+
+# Funzione per formattazione italiana: € 1.000,00
+def fmt_euro_it(valore):
+    try:
+        valore = float(valore)
+        # Formatta tipo US: 1,000.00
+        s = "{:,.2f}".format(valore)
+        # Scambia , con X, . con , e X con .
+        s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"€ {s}"
+    except:
+        return "€ 0,00"
+
 def fmt_euro(valore):
+    # Wrapper veloce
     try: valore = float(valore)
     except: valore = 0.0
     return f"€ {valore:,.2f}"
@@ -242,6 +270,8 @@ def importa_excel_batch(uploaded_file):
                 "incassi": [], "soci": [], "collab": [], "spese": [], 
                 "servizi": [], "percentages": {"portatore": 10, "societa": 10}
             })
+            if "Dati_JSON" in row and pd.notna(row["Dati_JSON"]):
+                 rec["Dati_JSON"] = row["Dati_JSON"]
             records_to_add.append(rec)
             
         if records_to_add:
@@ -517,7 +547,7 @@ def render_commessa_form(data=None):
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_societa"]), step=1, format="%d", key="num_soc", label_visibility="collapsed")
                 if new_perc_soc != st.session_state["perc_societa"]:
-                    st.session_state["perc_societa"] = new_perc_soc
+                    st.session_state["perc_societa"] = new_perc_societa
                     st.rerun()
             val_iva = tot_lordo - tot_net
             with b3: 
@@ -567,86 +597,53 @@ def render_commessa_form(data=None):
         with st.expander("⚠️ ZONA PERICOLO"):
             if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): elimina_record(codice, "Foglio1", "Codice")
 
-# --- 4. CLIENTI PAGE ---
-def render_clienti_page():
-    st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
-    st.markdown("---")
-    c_form, c_list = st.columns([1, 2], gap="large")
-    with c_form:
-        st.markdown("<h3 style='text-align: center;'>GESTIONE</h3>", unsafe_allow_html=True)
-        df = carica_dati("Clienti")
-        nomi = sorted(df["Denominazione"].tolist()) if not df.empty else []
-        sel = st.selectbox("Modifica:", [""] + nomi)
-        d = df[df["Denominazione"] == sel].iloc[0].to_dict() if sel and not df.empty else {}
-        
-        with st.form("frm_cli"):
-            den = st.text_input("Denominazione *", value=d.get("Denominazione", ""))
-            c1, c2 = st.columns(2)
-            piva = c1.text_input("P.IVA", value=d.get("P_IVA", ""))
-            sede = c2.text_input("Sede", value=d.get("Sede", ""))
-            c3, c4 = st.columns(2)
-            ref = c3.text_input("Referente", value=d.get("Referente", ""))
-            tel = c4.text_input("Tel", value=d.get("Telefono", ""))
-            mail = st.text_input("Email", value=d.get("Email", ""))
-            c5, c6 = st.columns(2)
-            idx_cont = SOCI_OPZIONI.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in SOCI_OPZIONI else 0
-            cont = c5.selectbox("Contatto SISMA", [""] + SOCI_OPZIONI, index=idx_cont)
-            sets = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
-            idx_set = sets.index(d.get("Settore")) if d.get("Settore") in sets else 3
-            sett = c6.selectbox("Settore", sets, index=idx_set)
-            st.markdown("<br>", unsafe_allow_html=True)
-            c_att, c_dis = st.columns(2)
-            curr_active = str(d.get("Attivo", "TRUE")).upper() == "TRUE"
-            chk_active = c_att.checkbox("Attivo", value=curr_active)
-            chk_inactive = c_dis.checkbox("Non Attivo", value=not curr_active)
-            note = st.text_area("Note", value=d.get("Note", ""))
-            if st.form_submit_button("SALVA"):
-                if not den: st.error("Nome obbligatorio")
-                else:
-                    final_state = "FALSE" if chk_inactive else ("TRUE" if chk_active else "FALSE")
-                    rec = {"Denominazione": den, "P_IVA": piva, "Sede": sede, "Referente": ref, "Telefono": tel, "Email": mail, "Contatto_SISMA": cont, "Settore": sett, "Attivo": final_state, "Note": note}
-                    salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
-                    st.rerun()
-        if sel and st.button("ELIMINA CLIENTE"): elimina_record(sel, "Clienti", "Denominazione")
-
-    with c_list:
-        st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
-        if not df.empty:
-            df_view = df.copy()
-            df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
-            df_view["Non Attivo"] = ~df_view["Attivo"] 
-            target_cols = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Settore", "Attivo"]
-            final_cols = [c for c in target_cols if c in df_view.columns]
-            st.dataframe(df_view[final_cols], column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, use_container_width=True, hide_index=True)
-            
-            buffer_cli = io.BytesIO()
-            with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
-                df_view.to_excel(writer_cli, index=False, sheet_name='Rubrica')
-            st.download_button(label="📥 BACKUP CLIENTI", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel")
-
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     df = carica_dati("Foglio1")
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
-    if df.empty: st.info("Nessun dato.")
+    if df.empty: 
+        st.info("Nessun dato.")
     else:
-        df["Totale Commessa"] = pd.to_numeric(df["Totale Commessa"], errors='coerce').fillna(0)
+        # Preparazione dati
+        df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
+        df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
+        
+        # Filtro Anno
+        anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
+        anni_opts = ["TUTTI"] + anni_disponibili
+        
+        c_filt, c_void = st.columns([1, 3])
+        sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
+        
+        # Filtraggio
+        if sel_anno != "TUTTI":
+            df_kpi = df[df["Anno"] == sel_anno]
+        else:
+            df_kpi = df
+
+        # --- KPI CARDS (FATTURATO ANNUALE) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
-        for i, (nome, col) in enumerate(zip(["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"], cols)):
-            d_s = df[df["Settore"].astype(str).str.upper() == nome]
+        settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
+        
+        for i, (nome, col) in enumerate(zip(settori, cols)):
+            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
+            tot_fatt = d_s['Fatturato'].sum()
+            
             with col:
                 st.markdown(f"""
                 <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
-                    <div style="color:#FFF; font-weight:bold;">{nome}</div>
-                    <div style="font-size:24px; color:white; font-weight:bold;">€ {d_s['Totale Commessa'].sum():,.0f}</div>
-                    <div style="font-size:12px; color:#ccece6;">{len(d_s)} Commesse</div>
+                    <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
+                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
+                    <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
                 """, unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
     
+    # --- SELETTORE MODIFICA SINGOLA ---
     if not df.empty:
         opts = []
         for _, row in df.iterrows():
@@ -660,6 +657,8 @@ def render_dashboard():
             return
 
     st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- IMPORT / EXPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
     with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO COMPLETO</h3>", unsafe_allow_html=True)
     with c_actions:
@@ -679,10 +678,50 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
+    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
     if not df.empty:
-        cols_to_show = ["Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
-        actual_cols = [c for c in cols_to_show if c in df.columns]
-        st.dataframe(df[actual_cols], use_container_width=True, height=500)
+        # Aggiungiamo una colonna per la selezione
+        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
+
+        # Pulsanti per selezione rapida
+        c_sel_all, c_deselect, c_space = st.columns([1, 1, 4])
+        if c_sel_all.button("Seleziona Tutto"):
+            st.session_state["select_all_state"] = True
+            st.rerun()
+        if c_deselect.button("Deseleziona"):
+            st.session_state["select_all_state"] = False
+            st.rerun()
+
+        # Preparazione DF per editor
+        df_to_edit = df.copy()
+        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+
+        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
+        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
+
+        edited_df = st.data_editor(
+            df_to_edit[actual_cols],
+            column_config={
+                "Seleziona": st.column_config.CheckboxColumn("Elimina?", default=False),
+                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
+                "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
+            },
+            disabled=[c for c in actual_cols if c != "Seleziona"],
+            use_container_width=True,
+            hide_index=True,
+            height=500,
+            key="archive_editor"
+        )
+
+        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
+        
+        if not rows_to_delete.empty:
+            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
+            col_del_btn, col_del_info = st.columns([1, 3])
+            
+            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
+                codici_da_eliminare = rows_to_delete["Codice"].tolist()
+                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -717,9 +756,6 @@ def render_organigramma():
     c_table, c_chart = st.columns([1, 1], gap="large")
     
     with c_table:
-        # STILE TABELLA AGGIORNATO:
-        # - width: 25% per la prima colonna (etichette)
-        # - padding: 10px 20px (più spazio laterale e verticale)
         st.markdown("""
         <div style="background-color: #111; border: 1px solid #333; border-radius: 4px; padding: 30px; height: 100%; font-family: 'Helvetica Neue', sans-serif; margin-bottom: 50px;">
             <div style="color: #427e72; font-size: 20px; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; text-transform: uppercase;">DATI SOCIETARI</div>
@@ -777,17 +813,12 @@ def render_organigramma():
         """, unsafe_allow_html=True)
 
     with c_chart:
-        # GRAFICO ENORME
-        # innerRadius aumentato a 120 (era 85)
-        # outerRadius aumentato a 190 (era 135)
-        # Height aumentata a 600 (era 450)
         petrol_palette = ['#082a33', '#0c3a47', '#14505f', '#1d6677', '#287d8f', '#3695a7', '#46adbf']
         chart = alt.Chart(df_s).mark_arc(innerRadius=120, outerRadius=190).encode(
             theta=alt.Theta("Quota", stack=True),
             color=alt.Color("Nome", legend=None, scale=alt.Scale(range=petrol_palette)),
             tooltip=["Nome", "Quota", "Perc"]
         ).properties(height=600).configure(background='#000000').configure_view(strokeWidth=0)
-        
         st.altair_chart(chart, use_container_width=True)
 
     c_cda, c_op, c_cs = st.columns(3, gap="medium")
@@ -872,4 +903,3 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
-
