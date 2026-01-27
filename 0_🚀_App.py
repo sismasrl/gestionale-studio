@@ -298,27 +298,23 @@ def importa_excel_batch(uploaded_file):
             else: st.error("❌ Nessun dato valido trovato.")
     except Exception as e: st.error(f"Errore Import: {e}")
 
-# --- 3. FORM COMMESSA ---
+# --- 3. FORM COMMESSA (AGGIORNATO) ---
 def render_commessa_form(data=None):
     is_edit = data is not None
     
-    # --- HELPER PER NOMI (COGNOME NOME -> NOME COGNOME) ---
+    # --- HELPER PER NOMI ---
     def inverti_nome(nome_completo):
         if not nome_completo or " " not in nome_completo: return nome_completo
         parts = nome_completo.split()
         return " ".join(parts[::-1])
 
-    # Crea la lista opzioni formattata NOME COGNOME
-    # (Assicurati che SOCI_OPZIONI sia definito altrove nel tuo codice globale)
     if 'SOCI_OPZIONI' in globals():
         SOCI_OPZIONI_FMT = [inverti_nome(s) for s in SOCI_OPZIONI]
 
-    # Inizializzazione Session State per il form
-    if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
-    if "form_piva" not in st.session_state: st.session_state["form_piva"] = ""
-    if "form_sede" not in st.session_state: st.session_state["form_sede"] = ""
-    if "form_ref" not in st.session_state: st.session_state["form_ref"] = ""
-    if "form_tel" not in st.session_state: st.session_state["form_tel"] = ""
+    # Inizializzazione Session State
+    keys_to_init = ["form_cliente", "form_piva", "form_sede", "form_ref", "form_tel"]
+    for k in keys_to_init:
+        if k not in st.session_state: st.session_state[k] = ""
     if "perc_portatore" not in st.session_state: st.session_state["perc_portatore"] = 10
     if "perc_societa" not in st.session_state: st.session_state["perc_societa"] = 10
 
@@ -334,12 +330,12 @@ def render_commessa_form(data=None):
 
     # Gestione dati in modifica vs nuovo
     if is_edit:
-        val_codice = data["Codice"]
+        val_codice_originale = data["Codice"] # Salviamo il codice originale per il confronto
         val_anno = int(data.get("Anno", 2024))
         val_oggetto = data.get("Nome Commessa", "") 
-        val_servizi = []
-        val_dettagli = "" 
         try:
+            val_servizi = []
+            val_dettagli = ""
             if "Dati_JSON" in data and data["Dati_JSON"]:
                 jdata = json.loads(data["Dati_JSON"])
                 val_servizi = jdata.get("servizi", [])
@@ -351,16 +347,16 @@ def render_commessa_form(data=None):
             val_servizi = []
             val_dettagli = ""
 
-        if st.session_state.get("last_loaded_code") != val_codice:
+        if st.session_state.get("last_loaded_code") != val_codice_originale:
             st.session_state["form_cliente"] = data.get("Cliente", "") 
             st.session_state["form_piva"] = data.get("P_IVA", "")
             st.session_state["form_sede"] = data.get("Sede", "")
             st.session_state["form_ref"] = data.get("Referente", "")
             st.session_state["form_tel"] = data.get("Tel Referente", "")
-            st.session_state["last_loaded_code"] = val_codice
+            st.session_state["last_loaded_code"] = val_codice_originale
             if "stato_incassi" in st.session_state: del st.session_state["stato_incassi"]
     else:
-        val_codice = ""
+        val_codice_originale = ""
         val_anno = date.today().year
         val_oggetto = ""
         val_servizi = []
@@ -379,67 +375,54 @@ def render_commessa_form(data=None):
     st.markdown(f"<h1 style='text-align: center;'>{titolo}</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # --- 01. ANAGRAFICA COMMESSA ---
     with st.expander("01 // ANAGRAFICA COMMESSA", expanded=True):
         c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1.5], gap="medium")
         
-        # Anno
         with c2: anno = st.number_input("Anno", 2020, 2030, val_anno, key="f_anno")
         
-        # Settore (definito prima di c1 perché serve per calcolare il codice)
         with c3:
             settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
             val_sett_raw = data.get("Settore", "RILIEVO").upper() if is_edit else "RILIEVO"
-            # Se il valore nel DB non è nella lista, usa il default 0
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
-        # Codice (Logica Aggiornata Dinamica)
+        # --- FIX CODICE CALCOLATO ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
+            codice_display = val_codice_originale
             
-            # Calcolo del valore da mostrare nel campo Codice
-            codice_display = val_codice
-            
-            if is_edit and val_codice:
-                # Logica: Prende il codice attuale, lo splitta e sostituisce il prefisso in base al settore scelto
-                parts = val_codice.split("-") 
-                # Gestisce sia separatori "-" che "/" per sicurezza
-                if len(parts) < 2 and "/" in val_codice: parts = val_codice.split("/")
+            if is_edit and val_codice_originale:
+                # Usa Regex per dividere su trattini O slash (es. RIL-2024-001 o RIL/2024/001)
+                parts = re.split(r'[-/]', val_codice_originale)
                 
-                if len(parts) >= 2:
+                # Se abbiamo almeno 3 parti (es: PREFISSO, ANNO, NUMERO)
+                if len(parts) >= 3:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    # Ricostruisce il codice mantenendo anno e numero progressivo originali
-                    codice_display = f"{nuovo_prefisso}-{'-'.join(parts[1:])}"
+                    # Ricostruisce SEMPRE con i trattini standard: PRE-ANNO-NUM
+                    codice_display = f"{nuovo_prefisso}-{parts[1]}-{parts[2]}"
+                # Fallback se il codice era strano (es. solo RIL-001)
+                elif len(parts) >= 2:
+                    nuovo_prefisso = mappa_settori.get(settore, "GEN")
+                    codice_display = f"{nuovo_prefisso}-{parts[-1]}"
             elif not is_edit:
-                # Nuova commessa: Crea codice standard
                 prefisso = mappa_settori.get(settore, "RIL")
                 codice_display = f"{prefisso}-{anno}-001"
 
-            # Visualizzazione a schermo
-            st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True, key="f_codice_visual")
-            
-            # Importante: Salviamo il codice calcolato in una variabile per usarlo dopo nel salvataggio
-            codice_finale = codice_display
+            st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
+            codice_finale = codice_display # Variabile critica per il salvataggio
 
-        # Stato
         with c4:
             idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
             stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        nome_commessa = st.text_input("Nome Commessa", value=val_oggetto, placeholder="Es. Rilievo Chiesa...")
+        nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Servizi e Dettagli
         c_serv, c_dett = st.columns([2, 1])
-        with c_serv:
-            # Assicurati che SERVIZI_LIST sia definito globalmente
-            servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
-        with c_dett:
-            dettagli_servizi = st.text_input("Dettagli", value=val_dettagli, placeholder="Specifiche extra...")
+        with c_serv: servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
+        with c_dett: dettagli_servizi = st.text_input("Dettagli", value=val_dettagli)
 
-    # --- 02. COMMITTENZA ---
     with st.expander("02 // COMMITTENZA", expanded=True):
         def on_cliente_change():
             sel = st.session_state["sel_cliente_box"]
@@ -462,10 +445,9 @@ def render_commessa_form(data=None):
             idx_cli = display_list.index(current_cli) if current_cli in display_list else 0
         except: idx_cli = 0
 
-        sel_val = st.selectbox("Seleziona Cliente esistente o Nuovo ▼", display_list, index=idx_cli, key="sel_cliente_box", on_change=on_cliente_change)
+        sel_val = st.selectbox("Seleziona Cliente", display_list, index=idx_cli, key="sel_cliente_box", on_change=on_cliente_change)
         if sel_val == "➕ NUOVO CLIENTE":
-            nome_cliente_manuale = st.text_input("Inserisci Nome Nuovo Cliente *", value="")
-            nome_cliente_finale = nome_cliente_manuale
+            nome_cliente_finale = st.text_input("Nome Nuovo Cliente *", value="")
         else: nome_cliente_finale = sel_val
 
         c1, c2 = st.columns(2)
@@ -481,26 +463,19 @@ def render_commessa_form(data=None):
         st.session_state["form_ref"] = referente
         st.session_state["form_tel"] = tel_ref
 
-    # --- 03. COORDINAMENTO ---
     with st.expander("03 // COORDINAMENTO", expanded=True):
         c1, c2 = st.columns(2)
-        
-        # Gestione NOME COGNOME
         curr_pm = data.get("PM", SOCI_OPZIONI[0]) if is_edit else SOCI_OPZIONI[0]
         curr_pm_fmt = inverti_nome(curr_pm) 
         idx_pm = SOCI_OPZIONI_FMT.index(curr_pm_fmt) if curr_pm_fmt in SOCI_OPZIONI_FMT else 0
-        
-        coordinatore_fmt = c1.selectbox("Project Manager ▼", SOCI_OPZIONI_FMT, index=idx_pm)
-        coordinatore = inverti_nome(coordinatore_fmt) 
+        coordinatore = inverti_nome(c1.selectbox("Project Manager ▼", SOCI_OPZIONI_FMT, index=idx_pm))
 
         curr_soc = data.get("Portatore", SOCI_OPZIONI[0]) if is_edit else SOCI_OPZIONI[0]
         curr_soc_fmt = inverti_nome(curr_soc)
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
-        
-        portatore_fmt = c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc)
-        portatore = inverti_nome(portatore_fmt)
+        portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # Inizializzazione Dataframe Incassi
+    # --- DATAFRAMES (INCASSI, SOCI, ETC) ---
     if "stato_incassi" not in st.session_state:
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data": date.today(), "Note": ""}])
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -517,21 +492,18 @@ def render_commessa_form(data=None):
             except: pass
         st.session_state["stato_incassi"] = df_init
     
-    # Dataframes Default Spese
+    # Init Dataframes Spese
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
     df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
     df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
 
-    # Caricamento Dati Spese se EDIT
     if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
         try:
             jdata = json.loads(data["Dati_JSON"])
             if "soci" in jdata: 
                 df_temp = pd.DataFrame(jdata["soci"])
                 if "Ruolo" in df_temp.columns: df_temp = df_temp.rename(columns={"Ruolo": "Mansione"})
-                if "Socio" in df_temp.columns:
-                     df_temp["Socio"] = df_temp["Socio"].apply(lambda x: inverti_nome(x))
-                
+                if "Socio" in df_temp.columns: df_temp["Socio"] = df_temp["Socio"].apply(inverti_nome)
                 expected = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
@@ -556,165 +528,140 @@ def render_commessa_form(data=None):
                 df_spese_def = df_temp[expected]
         except: pass
 
-    # --- 04. PIANO ECONOMICO ---
+    # 04. PIANO ECONOMICO
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
         col_cfg = {
-            "Voce": st.column_config.SelectboxColumn("Voce ▼", options=["Acconto", "Saldo"], required=True, width="medium"),
-            "Importo netto €": st.column_config.NumberColumn("Importo netto €", format="€ %.2f", required=True, width="small"),
-            "IVA %": st.column_config.SelectboxColumn("IVA % ▼", options=[0, 22], required=True, width="small"),
-            "Importo lordo €": st.column_config.NumberColumn("Importo lordo €", format="€ %.2f", disabled=True, width="small"),
-            "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Previsto", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
-            "Note": st.column_config.TextColumn("Note", width="large")
+            "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
+            "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
+            "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
+            "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
+            "Data": st.column_config.DateColumn(format="DD/MM/YYYY"),
+            "Note": st.column_config.TextColumn()
         }
         order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
+        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
         
-        edited_incassi = st.data_editor(
-            st.session_state["stato_incassi"], 
-            num_rows="dynamic", 
-            column_config=col_cfg, 
-            column_order=order_cols, 
-            use_container_width=True, 
-            key="ed_inc"
-        )
-        
-        # Logica di calcolo automatico
         ricalcolo = edited_incassi.copy()
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
-        
         if not ricalcolo.equals(st.session_state["stato_incassi"]):
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
-        # Totali
         tot_net = st.session_state["stato_incassi"]["Importo netto €"].sum()
         tot_lordo = st.session_state["stato_incassi"]["Importo lordo €"].sum()
-        
-        fatturato_netto = st.session_state["stato_incassi"][
-            st.session_state["stato_incassi"]['Stato'].astype(str) == 'Fatturato'
-        ]['Importo netto €'].sum()
+        fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
-        t_net_fmt = f"{tot_net:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        t_lor_fmt = f"{tot_lordo:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {tot_net:,.2f}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {tot_lordo:,.2f}</div></div>", unsafe_allow_html=True)
 
-        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {t_net_fmt}</div></div>", unsafe_allow_html=True)
-        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {t_lor_fmt}</div></div>", unsafe_allow_html=True)
-
-    # --- 05. COSTI & RETRIBUZIONI ---
+    # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
         st.markdown("### SOCI")
         soci_cfg = {
-            "Socio": st.column_config.SelectboxColumn("Socio ▼", options=SOCI_OPZIONI_FMT, required=True, width="medium"),
-            "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
-            "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
-            "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Conteggiato", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
-            "Note": st.column_config.TextColumn("Note", width="medium")
+            "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True),
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
+            "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        cols_soci = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
-        edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, column_order=cols_soci, use_container_width=True, key="ed_soc")
+        edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
-            "Collaboratore": st.column_config.TextColumn("Collaboratore", width="medium"),
-            "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
-            "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
-            "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
-            "Note": st.column_config.TextColumn("Note", width="medium")
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
+            "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        cols_collab = ["Collaboratore", "Mansione", "Importo", "Stato", "Data", "Note"]
-        edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, column_order=cols_collab, use_container_width=True, key="ed_col")
+        edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
-            "Voce": st.column_config.TextColumn("Voce", width="large"), 
-            "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
-            "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Pagato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
-            "Note": st.column_config.TextColumn("Note", width="medium")
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
+            "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        cols_spese = ["Voce", "Importo", "Stato", "Data", "Note"]
-        edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, column_order=cols_spese, use_container_width=True, key="ed_sp")
+        edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
         sum_soci = edited_soci["Importo"].sum()
         sum_collab = edited_collab["Importo"].sum()
         sum_spese = edited_spese["Importo"].sum()
         
         with top_metrics:
-            b1, b2, b3, b4 = st.columns(4, gap="small")
+            b1, b2, b3, b4 = st.columns(4)
             with b1:
                 val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                v_port_fmt = f"{val_portatore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {v_port_fmt}</div></div>", unsafe_allow_html=True)
-                new_perc_port = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_portatore"]), step=1, format="%d", key="num_port", label_visibility="collapsed")
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {val_portatore:,.2f}</div></div>", unsafe_allow_html=True)
+                new_perc_port = st.number_input("Perc %", 0, 100, int(st.session_state["perc_portatore"]), key="np")
                 if new_perc_port != st.session_state["perc_portatore"]:
                     st.session_state["perc_portatore"] = new_perc_port
                     st.rerun()
             with b2:
                 val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                v_soc_fmt = f"{val_societa:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {v_soc_fmt}</div></div>", unsafe_allow_html=True)
-                new_perc_soc = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_societa"]), step=1, format="%d", key="num_soc", label_visibility="collapsed")
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {val_societa:,.2f}</div></div>", unsafe_allow_html=True)
+                new_perc_soc = st.number_input("Perc %", 0, 100, int(st.session_state["perc_societa"]), key="ns")
                 if new_perc_soc != st.session_state["perc_societa"]:
                     st.session_state["perc_societa"] = new_perc_soc
                     st.rerun()
-            val_iva = tot_lordo - tot_net
             with b3: 
-                v_iva_fmt = f"{val_iva:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {v_iva_fmt}</div></div>", unsafe_allow_html=True)
-            
-            val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
-            color_utili = "#ff4b4b" if val_utili < 0 else "#ffffff"
+                val_iva = tot_lordo - tot_net
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {val_iva:,.2f}</div></div>", unsafe_allow_html=True)
             with b4: 
-                v_utili_fmt = f"{val_utili:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI NETTI COMMESSA</div><div class='total-value' style='color: {color_utili};'>€ {v_utili_fmt}</div></div>", unsafe_allow_html=True)
+                val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
+                color = "#ff4b4b" if val_utili < 0 else "#ffffff"
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>€ {val_utili:,.2f}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    # --- SALVATAGGIO ---
+    # --- SALVATAGGIO CON FIX DUPLICATI ---
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
         else:
+            # 1. Gestione Cliente
             if nome_cliente_finale not in lista_clienti:
-                st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}' alla rubrica...", icon="👤")
-                rec_cliente = {
-                    "Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo,
-                    "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO", "Note": "Auto-generato"
-                }
+                st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
+                rec_cliente = {"Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO"}
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
+            # 2. Preparazione JSON
             soci_to_save = edited_soci.copy()
-            soci_to_save["Socio"] = soci_to_save["Socio"].apply(lambda x: inverti_nome(x))
-
+            soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
                 "soci": soci_to_save.to_dict('records'),
                 "collab": edited_collab.to_dict('records'), 
                 "spese": edited_spese.to_dict('records'),
-                "servizi": servizi_scelti,
-                "dettagli_servizi": dettagli_servizi,
+                "servizi": servizi_scelti, "dettagli_servizi": dettagli_servizi,
                 "percentages": { "portatore": st.session_state["perc_portatore"], "societa": st.session_state["perc_societa"] }
             }, default=str)
             
-            tot_uscite_reali = val_portatore + val_societa + sum_soci + sum_collab + sum_spese
-            utile_netto_reale = tot_net - tot_uscite_reali
+            tot_uscite = val_portatore + val_societa + sum_soci + sum_collab + sum_spese
+            utile_netto = tot_net - tot_uscite
 
-            # MODIFICA IMPORTANTE: Usiamo codice_finale (calcolato dinamicamente)
+            # 3. FIX DUPLICAZIONE: Controlliamo se il codice è cambiato
+            mode_save = "update"
+            if is_edit:
+                if codice_finale != val_codice_originale:
+                    # Se il codice è cambiato (es. da RIL a ARC), dobbiamo CANCELLARE il vecchio record
+                    # altrimenti avremo un duplicato (RIL esiste ancora e creiamo ARC)
+                    elimina_record(val_codice_originale, "Foglio1", "Codice")
+                    mode_save = "new" # Salviamo il nuovo come 'new' inserimento
+                else:
+                    mode_save = "update" # Codice identico, aggiorniamo normalmente
+            else:
+                mode_save = "new"
+
             rec = {
-                "Codice": codice_finale,  # <--- QUI ERA L'ERRORE, ORA USA LA VARIABILE GIUSTA
-                "Anno": anno, 
-                "Nome Commessa": nome_commessa, 
-                "Cliente": nome_cliente_finale,
+                "Codice": codice_finale, "Anno": anno, "Nome Commessa": nome_commessa, "Cliente": nome_cliente_finale,
                 "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Tel Referente": tel_ref,
                 "PM": coordinatore, "Portatore": portatore, "Settore": settore, "Stato": stato_header, 
                 "Totale Commessa": tot_net, "Fatturato": fatturato_netto,
-                "Portatore_Val": val_portatore, "Costi Società": val_societa, "Utile Netto": utile_netto_reale,
+                "Portatore_Val": val_portatore, "Costi Società": val_societa, "Utile Netto": utile_netto,
                 "Data Inserimento": str(date.today()), "Dati_JSON": json_data
             }
-            salva_record(rec, "Foglio1", "Codice", "update" if is_edit else "new")
+            salva_record(rec, "Foglio1", "Codice", mode_save)
+            
             if is_edit: st.rerun()
 
     if is_edit:
@@ -1258,6 +1205,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
