@@ -522,7 +522,7 @@ def render_commessa_form(data=None):
                 df_spese_def = df_temp[expected]
         except: pass
 
-    with st.expander("04 // PIANO ECONOMICO", expanded=True):
+   with st.expander("04 // PIANO ECONOMICO", expanded=True):
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce ▼", options=["Acconto", "Saldo"], required=True, width="medium"),
             "Importo netto €": st.column_config.NumberColumn("Importo netto €", format="€ %.2f", required=True, width="small"),
@@ -532,7 +532,6 @@ def render_commessa_form(data=None):
             "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="large")
         }
-        # MODIFICA: Aggiunto column_order per spostare Lordo accanto a Netto
         order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
         
         edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
@@ -553,22 +552,21 @@ def render_commessa_form(data=None):
         fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'] == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
-        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
-        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
+        # MODIFICA: Formattazione diretta € 1000.00
+        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {tot_net:.2f}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {tot_lordo:.2f}</div></div>", unsafe_allow_html=True)
 
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
         st.markdown("### SOCI")
         soci_cfg = {
-            # MODIFICA: Usiamo SOCI_OPZIONI_FMT (Nome Cognome)
             "Socio": st.column_config.SelectboxColumn("Socio ▼", options=SOCI_OPZIONI_FMT, required=True, width="medium"),
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Conteggiato", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA: Aggiunta config Data
+            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
-        # MODIFICA: Ordine colonne per mettere Data vicino a Stato
         cols_soci = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, column_order=cols_soci, use_container_width=True, key="ed_soc")
 
@@ -578,7 +576,7 @@ def render_commessa_form(data=None):
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA
+            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
         cols_collab = ["Collaboratore", "Mansione", "Importo", "Stato", "Data", "Note"]
@@ -589,7 +587,7 @@ def render_commessa_form(data=None):
             "Voce": st.column_config.TextColumn("Voce", width="large"), 
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Pagato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA
+            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
         cols_spese = ["Voce", "Importo", "Stato", "Data", "Note"]
@@ -603,25 +601,29 @@ def render_commessa_form(data=None):
             b1, b2, b3, b4 = st.columns(4, gap="small")
             with b1:
                 val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
+                # MODIFICA: Formattazione diretta € 1000.00
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {val_portatore:.2f}</div></div>", unsafe_allow_html=True)
                 new_perc_port = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_portatore"]), step=1, format="%d", key="num_port", label_visibility="collapsed")
                 if new_perc_port != st.session_state["perc_portatore"]:
                     st.session_state["perc_portatore"] = new_perc_port
                     st.rerun()
             with b2:
                 val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
+                # MODIFICA: Formattazione diretta € 1000.00
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {val_societa:.2f}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_societa"]), step=1, format="%d", key="num_soc", label_visibility="collapsed")
                 if new_perc_soc != st.session_state["perc_societa"]:
                     st.session_state["perc_societa"] = new_perc_soc
                     st.rerun()
             val_iva = tot_lordo - tot_net
             with b3: 
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>{fmt_euro(val_iva)}</div></div>", unsafe_allow_html=True)
+                # MODIFICA: Formattazione diretta € 1000.00
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {val_iva:.2f}</div></div>", unsafe_allow_html=True)
             val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
             color_utili = "#ff4b4b" if val_utili < 0 else "#ffffff"
             with b4: 
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI NETTI COMMESSA</div><div class='total-value' style='color: {color_utili};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
+                # MODIFICA: Formattazione diretta € 1000.00
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI NETTI COMMESSA</div><div class='total-value' style='color: {color_utili};'>€ {val_utili:.2f}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
@@ -636,19 +638,16 @@ def render_commessa_form(data=None):
                 }
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # PREPARAZIONE DATI PER SALVATAGGIO
-            # Nota: I nomi dei soci nella tabella sono in formato NOME COGNOME. 
-            # Li riconvertiamo in COGNOME NOME prima di salvare per coerenza col database originale.
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(lambda x: inverti_nome(x))
 
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
-                "soci": soci_to_save.to_dict('records'), # Salviamo con nomi invertiti
+                "soci": soci_to_save.to_dict('records'),
                 "collab": edited_collab.to_dict('records'), 
                 "spese": edited_spese.to_dict('records'),
                 "servizi": servizi_scelti,
-                "dettagli_servizi": dettagli_servizi, # Salvataggio dettagli
+                "dettagli_servizi": dettagli_servizi,
                 "percentages": { "portatore": st.session_state["perc_portatore"], "societa": st.session_state["perc_societa"] }
             }, default=str)
             
@@ -1190,6 +1189,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
