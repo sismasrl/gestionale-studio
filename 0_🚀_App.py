@@ -301,19 +301,6 @@ def importa_excel_batch(uploaded_file):
 # --- 3. FORM COMMESSA ---
 def render_commessa_form(data=None):
     is_edit = data is not None
-    
-    # --- HELPER PER NOMI (COGNOME NOME -> NOME COGNOME) ---
-    # Inverte l'ordine dei nomi presi dalla lista globale SOCI_OPZIONI
-    def inverti_nome(nome_completo):
-        if not nome_completo or " " not in nome_completo: return nome_completo
-        parts = nome_completo.split()
-        # Se è formato da più parole, assumiamo le ultime come nome o invertiamo semplicemente tutto
-        # Qui inverto semplicemente l'ordine delle parole (es. ROSSI MARIO -> MARIO ROSSI)
-        return " ".join(parts[::-1])
-
-    # Crea la lista opzioni formattata NOME COGNOME
-    SOCI_OPZIONI_FMT = [inverti_nome(s) for s in SOCI_OPZIONI]
-
     if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
     if "form_piva" not in st.session_state: st.session_state["form_piva"] = ""
     if "form_sede" not in st.session_state: st.session_state["form_sede"] = ""
@@ -336,18 +323,14 @@ def render_commessa_form(data=None):
         val_anno = int(data.get("Anno", 2024))
         val_oggetto = data.get("Nome Commessa", "") 
         val_servizi = []
-        val_dettagli = "" # Variabile per i dettagli
         try:
             if "Dati_JSON" in data and data["Dati_JSON"]:
                 jdata = json.loads(data["Dati_JSON"])
                 val_servizi = jdata.get("servizi", [])
-                val_dettagli = jdata.get("dettagli_servizi", "") # Caricamento dettagli
                 if "percentages" in jdata:
                     st.session_state["perc_portatore"] = int(jdata["percentages"].get("portatore", 10))
                     st.session_state["perc_societa"] = int(jdata["percentages"].get("societa", 10))
-        except: 
-            val_servizi = []
-            val_dettagli = ""
+        except: val_servizi = []
 
         if st.session_state.get("last_loaded_code") != val_codice:
             st.session_state["form_cliente"] = data.get("Cliente", "") 
@@ -362,7 +345,6 @@ def render_commessa_form(data=None):
         val_anno = date.today().year
         val_oggetto = ""
         val_servizi = []
-        val_dettagli = ""
         if st.session_state.get("last_loaded_code") != "NEW":
              st.session_state["perc_portatore"] = 10
              st.session_state["perc_societa"] = 10
@@ -396,13 +378,7 @@ def render_commessa_form(data=None):
         st.markdown("<br>", unsafe_allow_html=True)
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto, placeholder="Es. Rilievo Chiesa...")
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        # MODIFICA: Split colonna servizi per inserire Dettagli
-        c_serv, c_dett = st.columns([2, 1])
-        with c_serv:
-            servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
-        with c_dett:
-            dettagli_servizi = st.text_input("Dettagli", value=val_dettagli, placeholder="Specifiche extra...")
+        servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
 
     with st.expander("02 // COMMITTENZA", expanded=True):
         def on_cliente_change():
@@ -447,24 +423,10 @@ def render_commessa_form(data=None):
 
     with st.expander("03 // COORDINAMENTO", expanded=True):
         c1, c2 = st.columns(2)
-        
-        # MODIFICA: Visualizzazione NOME COGNOME
-        # Cerchiamo l'indice basandoci sul valore salvato (Cognome Nome) ma visualizzando (Nome Cognome)
-        curr_pm = data.get("PM", SOCI_OPZIONI[0]) if is_edit else SOCI_OPZIONI[0]
-        curr_pm_fmt = inverti_nome(curr_pm) # Convertiamo quello salvato nel formato display
-        # Se per qualche motivo la conversione non è nella lista (es. dati vecchi), fallback al primo
-        idx_pm = SOCI_OPZIONI_FMT.index(curr_pm_fmt) if curr_pm_fmt in SOCI_OPZIONI_FMT else 0
-        
-        coordinatore_fmt = c1.selectbox("Project Manager ▼", SOCI_OPZIONI_FMT, index=idx_pm)
-        # Riconvertiamo in Cognome Nome per il salvataggio
-        coordinatore = inverti_nome(coordinatore_fmt) 
-
-        curr_soc = data.get("Portatore", SOCI_OPZIONI[0]) if is_edit else SOCI_OPZIONI[0]
-        curr_soc_fmt = inverti_nome(curr_soc)
-        idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
-        
-        portatore_fmt = c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc)
-        portatore = inverti_nome(portatore_fmt)
+        idx_pm = SOCI_OPZIONI.index(data.get("PM", SOCI_OPZIONI[0])) if is_edit and data.get("PM") in SOCI_OPZIONI else 0
+        coordinatore = c1.selectbox("Project Manager ▼", SOCI_OPZIONI, index=idx_pm)
+        idx_soc = SOCI_OPZIONI.index(data.get("Portatore", SOCI_OPZIONI[0])) if is_edit and data.get("Portatore") in SOCI_OPZIONI else 0
+        portatore = c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI, index=idx_soc)
 
     if "stato_incassi" not in st.session_state:
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data": date.today(), "Note": ""}])
@@ -482,10 +444,9 @@ def render_commessa_form(data=None):
             except: pass
         st.session_state["stato_incassi"] = df_init
     
-    # MODIFICA: Aggiunto campo "Data" nei dataframe di default
-    df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
-    df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
-    df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
+    df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
+    df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
+    df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Note": ""}])
 
     if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
         try:
@@ -493,32 +454,22 @@ def render_commessa_form(data=None):
             if "soci" in jdata: 
                 df_temp = pd.DataFrame(jdata["soci"])
                 if "Ruolo" in df_temp.columns: df_temp = df_temp.rename(columns={"Ruolo": "Mansione"})
-                # Assicuriamoci che i nomi caricati siano visualizzati come NOME COGNOME
-                if "Socio" in df_temp.columns:
-                     df_temp["Socio"] = df_temp["Socio"].apply(lambda x: inverti_nome(x))
-                
-                # MODIFICA: Aggiunto Data in expected e conversione date
-                expected = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
+                expected = ["Socio", "Mansione", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                if "Data" in df_temp.columns: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
                 df_soci_def = df_temp[expected]
-
             if "collab" in jdata: 
                 df_temp = pd.DataFrame(jdata["collab"])
                 if "Nome" in df_temp.columns: df_temp = df_temp.rename(columns={"Nome": "Collaboratore"})
-                expected = ["Collaboratore", "Mansione", "Importo", "Stato", "Data", "Note"]
+                expected = ["Collaboratore", "Mansione", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                if "Data" in df_temp.columns: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
                 df_collab_def = df_temp[expected]
-
             if "spese" in jdata: 
                 df_temp = pd.DataFrame(jdata["spese"])
-                expected = ["Voce", "Importo", "Stato", "Data", "Note"]
+                expected = ["Voce", "Importo", "Stato", "Note"]
                 for c in expected:
                      if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                if "Data" in df_temp.columns: df_temp["Data"] = pd.to_datetime(df_temp["Data"], errors='coerce').dt.date
                 df_spese_def = df_temp[expected]
         except: pass
 
@@ -532,10 +483,7 @@ def render_commessa_form(data=None):
             "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"),
             "Note": st.column_config.TextColumn("Note", width="large")
         }
-        # MODIFICA: Aggiunto column_order per spostare Lordo accanto a Netto
-        order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
-        
-        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
+        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, use_container_width=True, key="ed_inc")
         
         ricalcolo = edited_incassi.copy()
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
@@ -560,17 +508,13 @@ def render_commessa_form(data=None):
         top_metrics = st.container()
         st.markdown("### SOCI")
         soci_cfg = {
-            # MODIFICA: Usiamo SOCI_OPZIONI_FMT (Nome Cognome)
-            "Socio": st.column_config.SelectboxColumn("Socio ▼", options=SOCI_OPZIONI_FMT, required=True, width="medium"),
+            "Socio": st.column_config.SelectboxColumn("Socio ▼", options=SOCI_OPZIONI, required=True, width="medium"),
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Conteggiato", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA: Aggiunta config Data
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
-        # MODIFICA: Ordine colonne per mettere Data vicino a Stato
-        cols_soci = ["Socio", "Mansione", "Importo", "Stato", "Data", "Note"]
-        edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, column_order=cols_soci, use_container_width=True, key="ed_soc")
+        edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
@@ -578,22 +522,18 @@ def render_commessa_form(data=None):
             "Mansione": st.column_config.TextColumn("Mansione", width="medium"),
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Fatturato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
-        cols_collab = ["Collaboratore", "Mansione", "Importo", "Stato", "Data", "Note"]
-        edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, column_order=cols_collab, use_container_width=True, key="ed_col")
+        edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
             "Voce": st.column_config.TextColumn("Voce", width="large"), 
             "Importo": st.column_config.NumberColumn("Importo €", format="€ %.2f", required=True, width="small"),
             "Stato": st.column_config.SelectboxColumn("Stato ▼", options=["Da pagare", "Pagato"], required=True, width="small"),
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", width="small"), # MODIFICA
             "Note": st.column_config.TextColumn("Note", width="medium")
         }
-        cols_spese = ["Voce", "Importo", "Stato", "Data", "Note"]
-        edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, column_order=cols_spese, use_container_width=True, key="ed_sp")
+        edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
         sum_soci = edited_soci["Importo"].sum()
         sum_collab = edited_collab["Importo"].sum()
@@ -636,19 +576,12 @@ def render_commessa_form(data=None):
                 }
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # PREPARAZIONE DATI PER SALVATAGGIO
-            # Nota: I nomi dei soci nella tabella sono in formato NOME COGNOME. 
-            # Li riconvertiamo in COGNOME NOME prima di salvare per coerenza col database originale.
-            soci_to_save = edited_soci.copy()
-            soci_to_save["Socio"] = soci_to_save["Socio"].apply(lambda x: inverti_nome(x))
-
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
-                "soci": soci_to_save.to_dict('records'), # Salviamo con nomi invertiti
+                "soci": edited_soci.to_dict('records'),
                 "collab": edited_collab.to_dict('records'), 
                 "spese": edited_spese.to_dict('records'),
                 "servizi": servizi_scelti,
-                "dettagli_servizi": dettagli_servizi, # Salvataggio dettagli
                 "percentages": { "portatore": st.session_state["perc_portatore"], "societa": st.session_state["perc_societa"] }
             }, default=str)
             
@@ -675,8 +608,6 @@ def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
     st.markdown("---")
     c_form, c_list = st.columns([1, 2], gap="large")
-
-    # --- COLONNA SINISTRA: FORM DI INSERIMENTO/MODIFICA ---
     with c_form:
         st.markdown("<h3 style='text-align: center;'>GESTIONE</h3>", unsafe_allow_html=True)
         df = carica_dati("Clienti")
@@ -705,7 +636,6 @@ def render_clienti_page():
             chk_active = c_att.checkbox("Attivo", value=curr_active)
             chk_inactive = c_dis.checkbox("Non Attivo", value=not curr_active)
             note = st.text_area("Note", value=d.get("Note", ""))
-            
             if st.form_submit_button("SALVA"):
                 if not den: st.error("Nome obbligatorio")
                 else:
@@ -713,196 +643,22 @@ def render_clienti_page():
                     rec = {"Denominazione": den, "P_IVA": piva, "Sede": sede, "Referente": ref, "Telefono": tel, "Email": mail, "Contatto_SISMA": cont, "Settore": sett, "Attivo": final_state, "Note": note}
                     salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
                     st.rerun()
-        
         if sel and st.button("ELIMINA CLIENTE"): elimina_record(sel, "Clienti", "Denominazione")
 
-    # --- COLONNA DESTRA: LISTA E IMPORT/EXPORT ---
     with c_list:
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
-        
-        # --- SEZIONE IMPORT / EXPORT AGGIUNTA ---
-        with st.expander("📂 IMPORT / EXPORT EXCEL", expanded=False):
-            k1, k2 = st.columns(2)
-            
-            # EXPORT
-            with k1:
-                st.markdown("**Esporta Rubrica**")
-                if not df.empty:
-                    buffer_cli = io.BytesIO()
-                    with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
-                        # Esportiamo il DF originale per mantenere la compatibilità dei dati (es. Attivo=TRUE/FALSE stringa)
-                        df.to_excel(writer_cli, index=False, sheet_name='Rubrica')
-                    st.download_button(
-                        label="📥 SCARICA EXCEL", 
-                        data=buffer_cli, 
-                        file_name=f"Rubrica_Clienti_{date.today()}.xlsx", 
-                        mime="application/vnd.ms-excel",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("Nessun dato da esportare.")
-
-            # IMPORT
-            with k2:
-                st.markdown("**Importa Clienti**")
-                uploaded_file = st.file_uploader("Carica file .xlsx", type=["xlsx"], label_visibility="collapsed")
-                if uploaded_file is not None:
-                    if st.button("CARICA DATI NEL DB", use_container_width=True):
-                        try:
-                            df_new = pd.read_excel(uploaded_file)
-                            # Riempie i valori nulli per evitare errori
-                            df_new = df_new.fillna("")
-                            count = 0
-                            for index, row in df_new.iterrows():
-                                # Crea il record convertendo la riga in dizionario
-                                rec_import = row.to_dict()
-                                # Assicurati che ci sia almeno la denominazione
-                                if "Denominazione" in rec_import and rec_import["Denominazione"]:
-                                    # Usa "update" per sovrascrivere se esiste, o creare se nuovo
-                                    salva_record(rec_import, "Clienti", "Denominazione", "update")
-                                    count += 1
-                            st.success(f"Importati/Aggiornati {count} clienti con successo!")
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Errore durante l'importazione: {e}")
-
-        st.divider()
-
-        # --- VISUALIZZAZIONE TABELLA ---
         if not df.empty:
             df_view = df.copy()
-            # Conversione visuale per la colonna attivo
             df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
-            
+            df_view["Non Attivo"] = ~df_view["Attivo"] 
             target_cols = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Settore", "Attivo"]
             final_cols = [c for c in target_cols if c in df_view.columns]
+            st.dataframe(df_view[final_cols], column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, use_container_width=True, hide_index=True)
             
-            st.dataframe(
-                df_view[final_cols], 
-                column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, 
-                use_container_width=True, 
-                hide_index=True,
-                height=500
-            )
-
-# --- 5. DASHBOARD & IMPORT ---
-def render_commessa_form(data=None):
-    """
-    Renderizza il form per creare o modificare una commessa.
-    Se 'data' è un dizionario, il form viene precompilato (Modifica).
-    """
-    # 1. Determina se siamo in modifica
-    is_edit_mode = data is not None and isinstance(data, dict) and len(data) > 0
-    
-    titolo = f"✏️ MODIFICA COMMESSA: {data.get('Codice', '')}" if is_edit_mode else "➕ NUOVA COMMESSA"
-    
-    # 2. Pulsante Indietro
-    c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown(f"### {titolo}")
-    if c_btn.button("🔙 TORNA ALLA LISTA", use_container_width=True, key="btn_back_form"):
-        st.session_state["edit_commessa_data"] = None
-        st.rerun()
-
-    st.markdown("---")
-
-    # Se data è None, creiamo un dizionario vuoto per evitare errori con .get
-    if not data: data = {}
-
-    with st.form("frm_commessa_main"):
-        # --- RIGA 1: Codice e Anno ---
-        c1, c2, c3 = st.columns([1, 1, 2])
-        # IMPORTANTE: Disabilitiamo il Codice se siamo in modifica
-        val_codice = data.get("Codice", "")
-        codice = c1.text_input("Codice Commessa *", value=str(val_codice), disabled=is_edit_mode)
-        
-        val_anno = data.get("Anno", date.today().year)
-        # Gestione sicurezza conversione anno
-        try: val_anno = int(val_anno)
-        except: val_anno = date.today().year
-            
-        anno = c2.number_input("Anno", value=val_anno, step=1)
-        
-        stati_possibili = ["In Corso", "Conclusa", "Preventivo", "Annullata"]
-        val_stato = data.get("Stato", "In Corso")
-        idx_stato = stati_possibili.index(val_stato) if val_stato in stati_possibili else 0
-        stato = c3.selectbox("Stato", stati_possibili, index=idx_stato)
-
-        # --- RIGA 2: Dettagli Principali ---
-        nom = st.text_input("Oggetto / Nome Commessa *", value=data.get("Nome Commessa", ""))
-        cli = st.text_input("Cliente *", value=data.get("Cliente", ""))
-
-        c4, c5 = st.columns(2)
-        piva = c4.text_input("P.IVA / C.F.", value=data.get("P_IVA", ""))
-        sede = c5.text_input("Sede Legale", value=data.get("Sede", ""))
-
-        # --- RIGA 3: Dati Tecnici ---
-        c6, c7, c8 = st.columns(3)
-        ref = c6.text_input("Referente", value=data.get("Referente", ""))
-        tel = c7.text_input("Telefono", value=data.get("Tel Referente", ""))
-        pm_val = data.get("PM", "")
-        pm = c8.text_input("Project Manager (PM)", value=pm_val)
-
-        c9, c10 = st.columns(2)
-        sett_opts = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
-        val_sett = data.get("Settore", "ALTRO")
-        idx_sett = sett_opts.index(val_sett) if val_sett in sett_opts else 3
-        sett = c9.selectbox("Settore", sett_opts, index=idx_sett)
-        
-        # Recupera portatore
-        port = c10.text_input("Portatore", value=data.get("Portatore", ""))
-
-        st.markdown("#### 💶 Dati Economici")
-        ce1, ce2 = st.columns(2)
-        # Gestione sicurezza conversione float
-        try: val_tot = float(data.get("Totale Commessa", 0.0))
-        except: val_tot = 0.0
-        try: val_fatt = float(data.get("Fatturato", 0.0))
-        except: val_fatt = 0.0
-
-        tot_comm = ce1.number_input("Totale Commessa (€)", value=val_tot, step=100.0)
-        fatturato = ce2.number_input("Già Fatturato (€)", value=val_fatt, step=100.0)
-
-        # Recuperiamo il JSON nascosto (per non perdere dati non visibili qui)
-        json_hidden = data.get("Dati_JSON", "{}")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # --- SALVATAGGIO ---
-        if st.form_submit_button("💾 SALVA COMMESSA", type="primary", use_container_width=True):
-            if not codice or not nom or not cli:
-                st.error("⚠️ Campi obbligatori mancanti: Codice, Nome Commessa o Cliente.")
-            else:
-                # Creazione record
-                rec = {
-                    "Codice": codice,
-                    "Anno": anno,
-                    "Stato": stato,
-                    "Nome Commessa": nom,
-                    "Cliente": cli,
-                    "P_IVA": piva,
-                    "Sede": sede,
-                    "Referente": ref,
-                    "Tel Referente": tel,
-                    "PM": pm,
-                    "Portatore": port,
-                    "Settore": sett,
-                    "Totale Commessa": tot_comm,
-                    "Fatturato": fatturato,
-                    "Data Inserimento": data.get("Data Inserimento", str(date.today())),
-                    "Dati_JSON": json_hidden 
-                }
-                
-                # Se is_edit_mode è True -> update, altrimenti -> new
-                modo = "update" if is_edit_mode else "new"
-                
-                # Chiamata alla tua funzione helper (assicurati che accetti 'mode')
-                salva_record(rec, "Foglio1", "Codice", mode=modo)
-                
-                time.sleep(1)
-                st.session_state["edit_commessa_data"] = None # Reset
-                st.rerun()
-
+            buffer_cli = io.BytesIO()
+            with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
+                df_view.to_excel(writer_cli, index=False, sheet_name='Rubrica')
+            st.download_button(label="📥 BACKUP CLIENTI", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel")
 
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
@@ -1028,6 +784,7 @@ def render_dashboard():
             if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
                 codici_da_eliminare = rows_to_delete["Codice"].tolist()
                 elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
     st.markdown("<h2 style='text-align: center;'>ORGANIGRAMMA AZIENDALE</h2>", unsafe_allow_html=True)
@@ -1208,11 +965,3 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
-
-
-
-
-
-
-
-
