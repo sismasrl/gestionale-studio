@@ -674,197 +674,58 @@ def render_commessa_form(data=None):
 def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
     st.markdown("---")
-    
-    # --- GESTIONE STATO SELEZIONE ---
-    if "cliente_selezionato" not in st.session_state:
-        st.session_state["cliente_selezionato"] = None
-
     c_form, c_list = st.columns([1, 2], gap="large")
-
-    df = carica_dati("Clienti")
-    nomi = sorted(df["Denominazione"].unique().tolist()) if not df.empty else []
-
-    # --- COLONNA SINISTRA: FORM DI INSERIMENTO/MODIFICA ---
     with c_form:
-        st.markdown("<h3 style='text-align: center;'>SCHEDA CLIENTE</h3>", unsafe_allow_html=True)
-        
-        # Gestione indice per sincronizzare Selectbox con la Tabella
-        idx_sel = 0
-        current_sel = st.session_state["cliente_selezionato"]
-        if current_sel in nomi:
-            idx_sel = nomi.index(current_sel) + 1 # +1 perché c'è l'opzione vuota all'inizio
-        
-        # Selectbox sincronizzata
-        sel = st.selectbox("Cerca o Modifica:", [""] + nomi, index=idx_sel, key="sb_cliente_main")
-        
-        # Se l'utente cambia la selectbox manualmente, aggiorniamo lo stato
-        if sel != st.session_state["cliente_selezionato"]:
-            st.session_state["cliente_selezionato"] = sel
-            # Non facciamo rerun qui per evitare loop, si aggiornerà al prossimo ciclo o interazione
-            
-        # Recupero Dati
+        st.markdown("<h3 style='text-align: center;'>GESTIONE</h3>", unsafe_allow_html=True)
+        df = carica_dati("Clienti")
+        nomi = sorted(df["Denominazione"].tolist()) if not df.empty else []
+        sel = st.selectbox("Modifica:", [""] + nomi)
         d = df[df["Denominazione"] == sel].iloc[0].to_dict() if sel and not df.empty else {}
         
-        # Tasto per pulire il form (Nuovo inserimento)
-        if sel:
-            if st.button("➕ NUOVO CLIENTE (Deseleziona)", use_container_width=True):
-                st.session_state["cliente_selezionato"] = None
-                st.rerun()
-
-        st.markdown("---")
-
         with st.form("frm_cli"):
             den = st.text_input("Denominazione *", value=d.get("Denominazione", ""))
-            
             c1, c2 = st.columns(2)
             piva = c1.text_input("P.IVA", value=d.get("P_IVA", ""))
             sede = c2.text_input("Sede", value=d.get("Sede", ""))
-            
             c3, c4 = st.columns(2)
             ref = c3.text_input("Referente", value=d.get("Referente", ""))
             tel = c4.text_input("Tel", value=d.get("Telefono", ""))
-            
             mail = st.text_input("Email", value=d.get("Email", ""))
-            
             c5, c6 = st.columns(2)
-            # Gestione opzionale SOCI_OPZIONI se non definita globalmente
-            lista_soci = SOCI_OPZIONI if 'SOCI_OPZIONI' in globals() else ["Socio A", "Socio B"]
-            
-            idx_cont = lista_soci.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in lista_soci else 0
-            cont = c5.selectbox("Contatto SISMA", [""] + lista_soci, index=idx_cont)
-            
+            idx_cont = SOCI_OPZIONI.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in SOCI_OPZIONI else 0
+            cont = c5.selectbox("Contatto SISMA", [""] + SOCI_OPZIONI, index=idx_cont)
             sets = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
             idx_set = sets.index(d.get("Settore")) if d.get("Settore") in sets else 3
             sett = c6.selectbox("Settore", sets, index=idx_set)
-            
             st.markdown("<br>", unsafe_allow_html=True)
-            
             c_att, c_dis = st.columns(2)
             curr_active = str(d.get("Attivo", "TRUE")).upper() == "TRUE"
             chk_active = c_att.checkbox("Attivo", value=curr_active)
             chk_inactive = c_dis.checkbox("Non Attivo", value=not curr_active)
-            
             note = st.text_area("Note", value=d.get("Note", ""))
-            
-            if st.form_submit_button("💾 SALVA CLIENTE", type="primary", use_container_width=True):
-                if not den: 
-                    st.error("Nome obbligatorio")
+            if st.form_submit_button("SALVA"):
+                if not den: st.error("Nome obbligatorio")
                 else:
                     final_state = "FALSE" if chk_inactive else ("TRUE" if chk_active else "FALSE")
-                    rec = {
-                        "Denominazione": den, 
-                        "P_IVA": piva, 
-                        "Sede": sede, 
-                        "Referente": ref, 
-                        "Telefono": tel, 
-                        "Email": mail, 
-                        "Contatto_SISMA": cont, 
-                        "Settore": sett, 
-                        "Attivo": final_state, 
-                        "Note": note
-                    }
-                    # Se sel esiste aggiorniamo (update), altrimenti creiamo (new)
+                    rec = {"Denominazione": den, "P_IVA": piva, "Sede": sede, "Referente": ref, "Telefono": tel, "Email": mail, "Contatto_SISMA": cont, "Settore": sett, "Attivo": final_state, "Note": note}
                     salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
-                    st.success("Cliente salvato!")
-                    time.sleep(1)
                     st.rerun()
-        
-        if sel:
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🗑️ Zona Pericolo"):
-                if st.button("ELIMINA CLIENTE DEFINITIVAMENTE", type="primary"):
-                    elimina_record(sel, "Clienti", "Denominazione")
-                    st.session_state["cliente_selezionato"] = None
-                    st.rerun()
+        if sel and st.button("ELIMINA CLIENTE"): elimina_record(sel, "Clienti", "Denominazione")
 
-    # --- COLONNA DESTRA: LISTA E IMPORT/EXPORT ---
     with c_list:
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
-        
-        # --- SEZIONE IMPORT / EXPORT ---
-        with st.expander("📂 IMPORT / EXPORT EXCEL", expanded=False):
-            k1, k2 = st.columns(2)
-            # EXPORT
-            with k1:
-                st.markdown("**Esporta Rubrica**")
-                if not df.empty:
-                    buffer_cli = io.BytesIO()
-                    with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
-                        df.to_excel(writer_cli, index=False, sheet_name='Rubrica')
-                    st.download_button("📥 SCARICA EXCEL", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
-                else:
-                    st.info("Nessun dato.")
-
-            # IMPORT
-            with k2:
-                st.markdown("**Importa Clienti**")
-                uploaded_file = st.file_uploader("Carica file .xlsx", type=["xlsx"], label_visibility="collapsed")
-                if uploaded_file is not None and st.button("CARICA DATI NEL DB", use_container_width=True):
-                    try:
-                        df_new = pd.read_excel(uploaded_file).fillna("")
-                        count = 0
-                        for index, row in df_new.iterrows():
-                            rec_import = row.to_dict()
-                            if "Denominazione" in rec_import and rec_import["Denominazione"]:
-                                salva_record(rec_import, "Clienti", "Denominazione", "update")
-                                count += 1
-                        st.success(f"Importati {count} clienti!")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore: {e}")
-
-        st.divider()
-
-        # --- VISUALIZZAZIONE TABELLA CON SELEZIONE ---
         if not df.empty:
             df_view = df.copy()
-            # Conversione visuale per la colonna attivo
             df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
-            
-            # Aggiungiamo colonna Seleziona
-            # Se c'è un cliente selezionato, mettiamo True su quella riga
-            df_view.insert(0, "Seleziona", False)
-            if st.session_state["cliente_selezionato"]:
-                df_view.loc[df_view["Denominazione"] == st.session_state["cliente_selezionato"], "Seleziona"] = True
-
-            target_cols = ["Seleziona", "Denominazione", "P_IVA", "Referente", "Telefono", "Email", "Settore", "Attivo"]
+            df_view["Non Attivo"] = ~df_view["Attivo"] 
+            target_cols = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Settore", "Attivo"]
             final_cols = [c for c in target_cols if c in df_view.columns]
+            st.dataframe(df_view[final_cols], column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, use_container_width=True, hide_index=True)
             
-            # Data Editor Interattivo
-            edited_df = st.data_editor(
-                df_view[final_cols], 
-                column_config={
-                    "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
-                    "Attivo": st.column_config.CheckboxColumn(disabled=True),
-                    "Denominazione": st.column_config.TextColumn(width="medium"),
-                }, 
-                disabled=[c for c in final_cols if c != "Seleziona"], # Solo la spunta è modificabile
-                use_container_width=True, 
-                hide_index=True,
-                height=600,
-                key="editor_clienti"
-            )
-
-            # --- LOGICA DI SELEZIONE DALLA TABELLA ---
-            # Cerchiamo le righe dove Seleziona è True
-            selection = edited_df[edited_df["Seleziona"] == True]
-            
-            if not selection.empty:
-                # Prendiamo l'ultima selezione fatta (o la prima della lista)
-                selected_name = selection.iloc[0]["Denominazione"]
-                
-                # Se la selezione è diversa dallo stato attuale, aggiorniamo e ricarichiamo
-                if selected_name != st.session_state["cliente_selezionato"]:
-                    st.session_state["cliente_selezionato"] = selected_name
-                    st.rerun()
-            
-            # Se l'utente ha deselezionato tutto dalla tabella, ma avevamo un cliente selezionato
-            elif st.session_state["cliente_selezionato"] is not None and selection.empty:
-                 # Opzionale: se si vuole che deselezionando dalla tabella si pulisca il form
-                 # st.session_state["cliente_selezionato"] = None
-                 # st.rerun()
-                 pass
+            buffer_cli = io.BytesIO()
+            with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
+                df_view.to_excel(writer_cli, index=False, sheet_name='Rubrica')
+            st.download_button(label="📥 BACKUP CLIENTI", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel")
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     df = carica_dati("Foglio1")
@@ -1170,6 +1031,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
