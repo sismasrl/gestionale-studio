@@ -867,170 +867,253 @@ def render_clienti_page():
                  pass
 
 # --- 5. DASHBOARD & IMPORT ---
+# --- 5. DASHBOARD & IMPORT ---
+
 def render_dashboard():
-    # Ricarica i dati freschi dal DB
+
     df = carica_dati("Foglio1")
-    
+
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
-    
+
     if df.empty: 
-        st.info("Nessun dato presente in archivio.")
-        return
 
-    # --- 1. PULIZIA E PREPARAZIONE DATI (Fix Fatturati) ---
-    # Gestione Anno: converte in numero, gestisce errori e vuoti
-    df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-    
-    # Gestione Fatturato: Pulizia profonda per formati valuta (es. "1.200,50 €")
-    if "Fatturato" in df.columns:
-        # Converte tutto in stringa per manipolazione
-        df["Fatturato"] = df["Fatturato"].astype(str)
-        # Rimuove simbolo Euro e spazi
-        df["Fatturato"] = df["Fatturato"].str.replace('€', '', regex=False).str.strip()
-        # Rimuove i punti delle migliaia (attenzione: se il formato è americano 1,000.00 va invertita la logica)
-        # Assumiamo formato Italiano: 1.000,00
-        df["Fatturato"] = df["Fatturato"].str.replace('.', '', regex=False)
-        # Sostituisce la virgola con il punto decimale
-        df["Fatturato"] = df["Fatturato"].str.replace(',', '.', regex=False)
-        # Converte finalmente in Float
+        st.info("Nessun dato.")
+
+    else:
+
+        # Preparazione dati
+
+        df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
+
         df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
-    else:
-        df["Fatturato"] = 0.0
 
-    # Normalizzazione Settore (per evitare errori maiuscole/minuscole)
-    df["Settore_Norm"] = df["Settore"].astype(str).str.upper().str.strip()
-
-    # --- 2. FILTRI ---
-    anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
-    # Rimuove l'anno 0 se presente (dati sporchi)
-    if 0 in anni_disponibili: anni_disponibili.remove(0)
-    
-    anni_opts = ["TOTALE"] + anni_disponibili
-    
-    c_filt, c_void = st.columns([1, 3])
-    sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
-    
-    # Creazione DataFrame filtrato per i KPI
-    if sel_anno != "TOTALE":
-        df_kpi = df[df["Anno"] == sel_anno]
-    else:
-        df_kpi = df
-
-    # --- 3. KPI CARDS (Calcolo Somme) ---
-    palette = ["#14505f", "#1d6677", "#287d8f"]
-    cols = st.columns(3)
-    settori_target = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"] # Assicurati che corrispondano ai valori nel DB
-    
-    for i, (nome_settore, col) in enumerate(zip(settori_target, cols)):
-        # Filtra usando la colonna normalizzata
-        d_s = df_kpi[df_kpi["Settore_Norm"] == nome_settore]
         
-        # Somma precisa
-        tot_fatt = d_s['Fatturato'].sum()
+
+        # Filtro Anno
+
+        anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
+
+        anni_opts = ["TOTALE"] + anni_disponibili
+
         
-        with col:
-            st.markdown(f"""
-            <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
-                <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome_settore}</div>
-                <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
-                <div style="font-size:24px; color:white; font-weight:bold;">€ {tot_fatt:,.2f}</div>
-                <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
-            </div>
-            """, unsafe_allow_html=True)
+
+        c_filt, c_void = st.columns([1, 3])
+
+        sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
+
+        
+
+        # Filtraggio
+
+        if sel_anno != "TOTALE":
+
+            df_kpi = df[df["Anno"] == sel_anno]
+
+        else:
+
+            df_kpi = df
+
+
+
+        # --- KPI CARDS (FATTURATO ANNUALE) ---
+
+        palette = ["#14505f", "#1d6677", "#287d8f"]
+
+        cols = st.columns(3)
+
+        settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
+
+        
+
+        for i, (nome, col) in enumerate(zip(settori, cols)):
+
+            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
+
+            tot_fatt = d_s['Fatturato'].sum()
+
+            
+
+            with col:
+
+                st.markdown(f"""
+
+                <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
+
+                    <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
+
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
+
+                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
+
+                    <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
+
+                </div>
+
+                """, unsafe_allow_html=True)
+
+
 
     st.markdown("---")
+
+    st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
+
     
-    # --- 4. GESTIONE COMMESSE (Modifica/Elimina) ---
-    # Inizializza stato selezione se non esiste
-    if "select_all_state" not in st.session_state: 
-        st.session_state["select_all_state"] = False
 
-    # Intestazione con pulsanti selezione rapida
-    c_head, c_btns = st.columns([2, 2])
-    c_head.markdown("### 📋 Elenco Commesse")
-    
-    with c_btns:
-        b1, b2, b3 = st.columns([1, 1, 1])
-        if b1.button("Select All", use_container_width=True):
-            st.session_state["select_all_state"] = True
-            st.rerun()
-        if b2.button("Deselect", use_container_width=True):
-            st.session_state["select_all_state"] = False
-            st.rerun()
-        # Pulsante Modifica che agisce sulla selezione
-        req_modifica = b3.button("✏️ Modifica", type="primary", use_container_width=True)
+    # --- SELETTORE MODIFICA SINGOLA ---
 
-    # Preparazione DF per l'editor
-    df_to_edit = df.copy()
-    df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+    if not df.empty:
 
-    # Colonne da visualizzare
-    cols_view = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
-    actual_cols = [c for c in cols_view if c in df_to_edit.columns]
+        opts = []
 
-    # EDITOR DATI
-    edited_df = st.data_editor(
-        df_to_edit[actual_cols],
-        column_config={
-            "Seleziona": st.column_config.CheckboxColumn("Sel.", default=False),
-            "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-            "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
-        },
-        disabled=[c for c in actual_cols if c != "Seleziona"], # Blocca modifica diretta celle, usa il form
-        use_container_width=True,
-        hide_index=True,
-        height=500,
-        key="dash_editor_main"
-    )
+        for _, row in df.iterrows():
 
-    # Recupera righe selezionate
-    rows_selected = edited_df[edited_df["Seleziona"] == True]
+             nome_show = str(row["Nome Commessa"])
 
-    # --- LOGICA MODIFICA ---
-    if req_modifica:
-        if rows_selected.empty:
-            st.warning("⚠️ Seleziona una commessa dalla lista per modificarla.")
-        elif len(rows_selected) > 1:
-            st.warning("⚠️ Seleziona solo una commessa alla volta per la modifica.")
-        else:
-            # Recupera dati per il form
-            cod_sel = rows_selected.iloc[0]["Codice"]
-            record_completo = df[df["Codice"].astype(str) == str(cod_sel)].iloc[0].to_dict()
-            
-            # Renderizza il form (che è definito sopra nel codice)
-            render_commessa_form(record_completo)
-            # Stop esecuzione qui per mostrare solo il form
-            return 
+             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
 
-    # --- LOGICA ELIMINAZIONE ---
-    if not rows_selected.empty and not req_modifica:
-        st.markdown("---")
-        c_del_btn, c_del_msg = st.columns([1, 4])
-        if c_del_btn.button(f"🗑️ ELIMINA {len(rows_selected)} ITEM"):
-            codici_da_eliminare = rows_selected["Codice"].tolist()
-            elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
-            st.success("Record eliminati.")
-            time.sleep(1)
-            st.rerun()
+             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
+
+        sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
+
+        if sel:
+
+            cod = sel.split(" | ")[0]
+
+            render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
+
+            return
+
+
 
     st.markdown("<br>", unsafe_allow_html=True)
+
     
-    # --- 5. IMPORT / EXPORT AREA ---
-    with st.expander("📂 GESTIONE FILE (IMPORT / EXPORT)", expanded=False):
-        t_exp, t_imp = st.tabs(["📤 ESPORTA DATI", "📥 IMPORTA DATI"])
-        
-        with t_exp:
+
+    # --- IMPORT / EXPORT ---
+
+    c_title, c_actions = st.columns([1, 1], gap="large")
+
+    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO COMPLETO</h3>", unsafe_allow_html=True)
+
+    with c_actions:
+
+        tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
+
+        with tab_backup:
+
             buffer = io.BytesIO()
+
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Esporta il DF originale (non quello pulito per i calcoli) per non perdere formattazioni
-                df.drop(columns=["Settore_Norm", "Seleziona"], errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
-            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel")
-            
-        with t_imp:
-            st.info("Carica un file Excel con le colonne: Codice, Anno, Nome Commessa, Fatturato, ecc.")
-            uploaded_file = st.file_uploader("Carica Excel aggiornato", type=["xlsx", "xls"])
-            if uploaded_file and st.button("AVVIA IMPORTAZIONE", use_container_width=True):
+
+                df.to_excel(writer, index=False, sheet_name='Archivio_SISMA')
+
+            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+
+        with tab_import:
+
+            st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
+
+            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa", "Fatturato"])
+
+            buf_tpl = io.BytesIO()
+
+            with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
+
+            st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
+
+            uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
+
+            if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
+
                 importa_excel_batch(uploaded_file)
+
+
+
+    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
+
+    if not df.empty:
+
+        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
+
+
+
+        # Pulsanti Compatti (Colonne strette 0.6)
+
+        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
+
+        if c_sel_all.button("Seleziona Tutto"):
+
+            st.session_state["select_all_state"] = True
+
+            st.rerun()
+
+        if c_deselect.button("Deseleziona"):
+
+            st.session_state["select_all_state"] = False
+
+            st.rerun()
+
+
+
+        # Prep DF
+
+        df_to_edit = df.copy()
+
+        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+
+
+
+        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
+
+        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
+
+
+
+        edited_df = st.data_editor(
+
+            df_to_edit[actual_cols],
+
+            column_config={
+
+                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
+
+                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
+
+                "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
+
+            },
+
+            disabled=[c for c in actual_cols if c != "Seleziona"],
+
+            use_container_width=True,
+
+            hide_index=True,
+
+            height=500,
+
+            key="archive_editor"
+
+        )
+
+
+
+        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
+
+        
+
+        if not rows_to_delete.empty:
+
+            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
+
+            col_del_btn, col_del_info = st.columns([1, 3])
+
+            
+
+            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
+
+                codici_da_eliminare = rows_to_delete["Codice"].tolist()
+
+                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
                 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1212,6 +1295,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
