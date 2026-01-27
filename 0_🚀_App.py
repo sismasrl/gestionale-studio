@@ -522,7 +522,7 @@ def render_commessa_form(data=None):
                 df_spese_def = df_temp[expected]
         except: pass
 
-   with st.expander("04 // PIANO ECONOMICO", expanded=True):
+    with st.expander("04 // PIANO ECONOMICO", expanded=True):
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce ▼", options=["Acconto", "Saldo"], required=True, width="medium"),
             "Importo netto €": st.column_config.NumberColumn("Importo netto €", format="€ %.2f", required=True, width="small"),
@@ -1189,6 +1189,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
