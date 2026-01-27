@@ -874,23 +874,28 @@ def render_dashboard():
         st.info("Nessun dato.")
     else:
         # --- 1. PULIZIA DATI INTELLIGENTE ---
-        # Funzione per gestire sia numeri puri (dal salvataggio) che stringhe (dall'import o formattazione)
         def converti_valuta_smart(x):
             try:
+                # Se è vuoto o nullo
                 if pd.isna(x) or str(x).strip() == "": 
                     return 0.0
-                # Se è già un numero (float o int), lo restituiamo direttamente
+                
+                # Se è già un numero (int o float), lo restituiamo come float
                 if isinstance(x, (int, float)): 
                     return float(x)
                 
                 # Se è una stringa, puliamo la formattazione
                 s = str(x).replace("€", "").strip()
-                # Gestione formato italiano: se c'è la virgola, è il decimale
-                if "," in s:
-                    # Rimuovi i punti delle migliaia (1.000 -> 1000)
-                    s = s.replace(".", "")
-                    # Sostituisci virgola con punto decimale
+                
+                # Algoritmo per interpretare la stringa
+                # Se contiene sia punti che virgole (es. 1.000,50) -> Formato ITA
+                if "." in s and "," in s:
+                    s = s.replace(".", "").replace(",", ".")
+                # Se contiene solo la virgola (es. 1000,50) -> Formato ITA
+                elif "," in s:
                     s = s.replace(",", ".")
+                # Se contiene solo il punto, verifichiamo se è un separatore migliaia o decimale
+                # (Assumiamo decimale se c'è un solo punto verso la fine, altrimenti rischioso, ma standard python è punto=decimale)
                 
                 return float(s)
             except:
@@ -898,7 +903,7 @@ def render_dashboard():
 
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         
-        # Applica la conversione riga per riga
+        # Applica la conversione alla colonna Fatturato
         if "Fatturato" in df.columns:
             df["Fatturato"] = df["Fatturato"].apply(converti_valuta_smart)
         else:
@@ -930,8 +935,10 @@ def render_dashboard():
             tot_fatt = d_s['Fatturato'].sum()
             
             with col:
-                # FORMATTAZIONE: € 1000.00
-                formatted_price = f"€ {tot_fatt:.2f}"
+                # FORMATTAZIONE ITALIANA: € 1.000,00
+                # Usiamo un trucco: formattiamo standard (1,000.00) e poi invertiamo i segni
+                val_fmt = f"{tot_fatt:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                formatted_price = f"€ {val_fmt}"
                 
                 st.markdown(f"""
                 <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
@@ -1207,6 +1214,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
