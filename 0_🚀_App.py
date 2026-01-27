@@ -884,55 +884,94 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. FUNZIONE DI PULIZIA NUMERI (Universalmente valida) ---
-        def clean_number_euro(val):
-            if pd.isna(val) or str(val).strip() == "": return 0.0
-            if isinstance(val, (int, float)): return float(val)
+        # --- 1. FUNZIONE PER CALCOLARE IL FATTURATO REALE DAL JSON ---
+        def calcola_incassato_reale(row):
+            """
+            Legge il campo Dati_JSON.
+            Va nella sezione 'incassi' (Piano Economico).
+            Somma 'Importo netto €' SOLO SE lo Stato è 'Fatturato'.
+            """
+            totale_riga = 0.0
             
-            # Rimuovi € e spazi
-            s = str(val).replace("€", "").strip()
-            # Gestione formati (1.000,00 vs 1000.00)
-            if "." in s and "," in s: s = s.replace(".", "").replace(",", ".") # Formato ITA esteso
-            elif "," in s: s = s.replace(",", ".") # Formato ITA semplice
+            # Recupera il JSON
+            raw_json = row.get("Dati_JSON", "")
             
-            try: return float(s)
-            except: return 0.0
+            # Se non c'è JSON, proviamo a usare la colonna 'Fatturato' manuale come fallback (o restituisci 0)
+            if pd.isna(raw_json) or str(raw_json).strip() == "":
+                return 0.0
+
+            try:
+                dati = json.loads(str(raw_json))
+                incassi = dati.get("incassi", []) # Sezione 04 // PIANO ECONOMICO
+                
+                for item in incassi:
+                    # --- GESTIONE ANNIDAMENTO (es. 0:{...}) ---
+                    dati_reali = item
+                    # Se l'item è un dizionario ma non ha le chiavi dirette, cerchiamo nei valori
+                    if isinstance(item, dict) and "Stato" not in item:
+                        for k, v in item.items():
+                            if isinstance(v, dict) and "Stato" in v:
+                                dati_reali = v
+                                break 
+                    
+                    # --- CONTROLLO STATO ---
+                    # Normalizziamo lo stato (minuscolo e senza spazi)
+                    stato = str(dati_reali.get("Stato", "")).lower().strip()
+                    
+                    # CONTA SOLO SE è "Fatturato" (ignora "Previsto", "In attesa", ecc.)
+                    if "fatturato" in stato:
+                        raw_importo = dati_reali.get("Importo netto €", 0)
+                        
+                        # Pulizia del numero (toglie € e gestisce formati it/en)
+                        str_importo = str(raw_importo).replace("€", "").strip()
+                        if "," in str_importo and "." in str_importo:
+                            str_importo = str_importo.replace(".", "").replace(",", ".")
+                        elif "," in str_importo:
+                            str_importo = str_importo.replace(",", ".")
+                        
+                        try:
+                            totale_riga += float(str_importo)
+                        except:
+                            pass
+            except:
+                return 0.0
+                
+            return totale_riga
 
         # --- 2. PREPARAZIONE DATI ---
         # Convertiamo Anno in intero
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         
-        # Convertiamo le colonne monetarie in numeri puri
-        df["Totale Commessa Num"] = df["Totale Commessa"].apply(clean_number_euro)
-        df["Fatturato Num"] = df["Fatturato"].apply(clean_number_euro)
+        # CALCOLIAMO LA COLONNA FATTURATO REALE (basata sul JSON)
+        df["Fatturato_Calc"] = df.apply(calcola_incassato_reale, axis=1)
         
         # --- 3. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
         if 0 in anni_disponibili: anni_disponibili.remove(0)
-        anni_opts = ["TOTALE"] + anni_disponibili
+        anni_opts = ["TOTALE"] + [str(x) for x in anni_disponibili]
         
         c_filt, c_void = st.columns([1, 3])
-        sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
+        sel_anno_str = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
-        if sel_anno != "TOTALE":
-            df_kpi = df[df["Anno"] == sel_anno].copy()
+        # Filtraggio DataFrame
+        if sel_anno_str != "TOTALE":
+            df_kpi = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
             df_kpi = df.copy()
 
-        # --- 4. KPI CARDS (BASATE SU TOTALE COMMESSA) ---
+        # --- 4. KPI CARDS (FATTURATO REALE DA JSON) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         
-        # Normalizzazione Settore (Maiuscolo e senza spazi per confronto sicuro)
+        # Normalizzazione Settore
         df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
-            # Filtra il settore
             d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
             
-            # --- MODIFICA RICHIESTA: SOMMA DEI TOTALI COMMESSA ---
-            totale_settore = d_s['Totale Commessa Num'].sum()
+            # SOMMA DEL FATTURATO CALCOLATO DAL JSON
+            totale_settore = d_s['Fatturato_Calc'].sum()
             
             with col:
                 # FORMATTAZIONE ITA: € 1.000,00
@@ -941,7 +980,7 @@ def render_dashboard():
                 st.markdown(f"""
                 <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">VALORE COMMESSE {sel_anno}</div>
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO TOTALE {sel_anno_str}</div>
                     <div style="font-size:24px; color:white; font-weight:bold;">€ {val_fmt}</div>
                     <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
@@ -973,8 +1012,8 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Rimuoviamo le colonne temporanee create per il calcolo prima di esportare
-                cols_to_drop = [c for c in ["Totale Commessa Num", "Fatturato Num", "Settore_Norm"] if c in df.columns]
+                # Rimuoviamo le colonne temporanee create per il calcolo
+                cols_to_drop = [c for c in ["Fatturato_Calc", "Settore_Norm", "Anno_Int"] if c in df.columns]
                 df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
         with tab_import:
@@ -1001,6 +1040,9 @@ def render_dashboard():
 
         df_to_edit = df.copy()
         df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+        
+        # Mostriamo nella tabella il valore calcolato dal JSON per chiarezza
+        df_to_edit["Fatturato"] = df_to_edit["Fatturato_Calc"]
 
         cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
@@ -1010,7 +1052,7 @@ def render_dashboard():
             column_config={
                 "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
                 "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-                "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
+                "Fatturato": st.column_config.NumberColumn(label="Fatturato (Reale)", format="€ %.2f", disabled=True),
             },
             disabled=[c for c in actual_cols if c != "Seleziona"],
             use_container_width=True,
@@ -1023,9 +1065,8 @@ def render_dashboard():
         
         if not rows_to_delete.empty:
             st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
-            col_del_btn, col_del_info = st.columns([1, 3])
             
-            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
+            if st.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
                 codici_da_eliminare = rows_to_delete["Codice"].tolist()
                 elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
                 
@@ -1209,6 +1250,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
