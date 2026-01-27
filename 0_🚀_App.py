@@ -873,41 +873,56 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato.")
     else:
-        # --- 1. PULIZIA DATI (Fondamentale per i calcoli) ---
+        # --- 1. PULIZIA DATI INTELLIGENTE ---
+        # Funzione per gestire sia numeri puri (dal salvataggio) che stringhe (dall'import o formattazione)
+        def converti_valuta_smart(x):
+            try:
+                if pd.isna(x) or str(x).strip() == "": 
+                    return 0.0
+                # Se è già un numero (float o int), lo restituiamo direttamente
+                if isinstance(x, (int, float)): 
+                    return float(x)
+                
+                # Se è una stringa, puliamo la formattazione
+                s = str(x).replace("€", "").strip()
+                # Gestione formato italiano: se c'è la virgola, è il decimale
+                if "," in s:
+                    # Rimuovi i punti delle migliaia (1.000 -> 1000)
+                    s = s.replace(".", "")
+                    # Sostituisci virgola con punto decimale
+                    s = s.replace(",", ".")
+                
+                return float(s)
+            except:
+                return 0.0
+
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         
-        # Pulizia robusta Fatturato (gestisce sia stringhe "1.000,00 €" che numeri puri)
+        # Applica la conversione riga per riga
         if "Fatturato" in df.columns:
-            # Toglie simbolo Euro e spazi
-            df["Fatturato"] = df["Fatturato"].astype(str).str.replace('€', '', regex=False).str.strip()
-            # Toglie il punto delle migliaia (es. 1.000 diventa 1000)
-            df["Fatturato"] = df["Fatturato"].str.replace('.', '', regex=False)
-            # Sostituisce la virgola decimale con il punto
-            df["Fatturato"] = df["Fatturato"].str.replace(',', '.', regex=False)
-            # Converte in numero
-            df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
+            df["Fatturato"] = df["Fatturato"].apply(converti_valuta_smart)
         else:
             df["Fatturato"] = 0.0
         
         # --- 2. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
-        if 0 in anni_disponibili: anni_disponibili.remove(0) # Rimuove anni non validi
+        if 0 in anni_disponibili: anni_disponibili.remove(0)
         anni_opts = ["TOTALE"] + anni_disponibili
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
         if sel_anno != "TOTALE":
-            df_kpi = df[df["Anno"] == sel_anno]
+            df_kpi = df[df["Anno"] == sel_anno].copy()
         else:
-            df_kpi = df
+            df_kpi = df.copy()
 
         # --- 3. KPI CARDS (FATTURATO) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         
-        # Normalizziamo il settore per il confronto (tutto maiuscolo)
+        # Normalizzazione Settore
         df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
@@ -915,7 +930,7 @@ def render_dashboard():
             tot_fatt = d_s['Fatturato'].sum()
             
             with col:
-                # FORMATTAZIONE RICHIESTA: € 1000.00 (Nessuna virgola, punto decimale)
+                # FORMATTAZIONE: € 1000.00
                 formatted_price = f"€ {tot_fatt:.2f}"
                 
                 st.markdown(f"""
@@ -940,6 +955,7 @@ def render_dashboard():
         sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
         if sel:
             cod = sel.split(" | ")[0]
+            # Passiamo una copia del record per evitare errori di riferimento
             render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
             return
 
@@ -953,7 +969,9 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Archivio_SISMA')
+                # Esportiamo il DF originale (senza colonne di servizio create per la dashboard)
+                cols_to_drop = ["Settore_Norm"] if "Settore_Norm" in df.columns else []
+                df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
         with tab_import:
             st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
@@ -969,7 +987,7 @@ def render_dashboard():
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Compatti (Colonne strette 0.6)
+        # Pulsanti Compatti
         c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
@@ -1189,6 +1207,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
