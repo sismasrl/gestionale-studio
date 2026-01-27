@@ -666,5 +666,4 @@ else:
     elif menu_scelta == "SOCIETA'":
         render_societa_page()
 
-```
 
