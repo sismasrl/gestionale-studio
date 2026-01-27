@@ -303,17 +303,17 @@ def render_commessa_form(data=None):
     is_edit = data is not None
     
     # --- HELPER PER NOMI (COGNOME NOME -> NOME COGNOME) ---
-    # Inverte l'ordine dei nomi presi dalla lista globale SOCI_OPZIONI
     def inverti_nome(nome_completo):
         if not nome_completo or " " not in nome_completo: return nome_completo
         parts = nome_completo.split()
-        # Se è formato da più parole, assumiamo le ultime come nome o invertiamo semplicemente tutto
-        # Qui inverto semplicemente l'ordine delle parole (es. ROSSI MARIO -> MARIO ROSSI)
         return " ".join(parts[::-1])
 
     # Crea la lista opzioni formattata NOME COGNOME
-    SOCI_OPZIONI_FMT = [inverti_nome(s) for s in SOCI_OPZIONI]
+    # (Assicurati che SOCI_OPZIONI sia definito altrove nel tuo codice)
+    if 'SOCI_OPZIONI' in globals():
+        SOCI_OPZIONI_FMT = [inverti_nome(s) for s in SOCI_OPZIONI]
 
+    # Inizializzazione Session State per il form
     if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
     if "form_piva" not in st.session_state: st.session_state["form_piva"] = ""
     if "form_sede" not in st.session_state: st.session_state["form_sede"] = ""
@@ -322,6 +322,7 @@ def render_commessa_form(data=None):
     if "perc_portatore" not in st.session_state: st.session_state["perc_portatore"] = 10
     if "perc_societa" not in st.session_state: st.session_state["perc_societa"] = 10
 
+    # Caricamento Clienti
     df_clienti = carica_dati("Clienti")
     lista_clienti = []
     if not df_clienti.empty and "Denominazione" in df_clienti.columns:
@@ -331,17 +332,18 @@ def render_commessa_form(data=None):
         else:
              lista_clienti = sorted(df_clienti["Denominazione"].unique().tolist())
 
+    # Gestione dati in modifica vs nuovo
     if is_edit:
         val_codice = data["Codice"]
         val_anno = int(data.get("Anno", 2024))
         val_oggetto = data.get("Nome Commessa", "") 
         val_servizi = []
-        val_dettagli = "" # Variabile per i dettagli
+        val_dettagli = "" 
         try:
             if "Dati_JSON" in data and data["Dati_JSON"]:
                 jdata = json.loads(data["Dati_JSON"])
                 val_servizi = jdata.get("servizi", [])
-                val_dettagli = jdata.get("dettagli_servizi", "") # Caricamento dettagli
+                val_dettagli = jdata.get("dettagli_servizi", "") 
                 if "percentages" in jdata:
                     st.session_state["perc_portatore"] = int(jdata["percentages"].get("portatore", 10))
                     st.session_state["perc_societa"] = int(jdata["percentages"].get("societa", 10))
@@ -379,16 +381,48 @@ def render_commessa_form(data=None):
 
     with st.expander("01 // ANAGRAFICA COMMESSA", expanded=True):
         c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1.5], gap="medium")
+        
+        # Anno
         with c2: anno = st.number_input("Anno", 2020, 2030, val_anno, key="f_anno")
+        
+        # Settore (definito prima di c1 perché serve per calcolare il codice)
         with c3:
             settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
             val_sett_raw = data.get("Settore", "RILIEVO").upper() if is_edit else "RILIEVO"
+            # Se il valore nel DB non è nella lista, usa il default 0
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
+        
+        # Codice (Logica Aggiornata)
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
-            if is_edit: codice = st.text_input("Codice", value=val_codice, disabled=True)
-            else: codice = st.text_input("Codice", value=f"{mappa_settori[settore]}/{anno}-001")
+            
+            # Calcolo del valore da mostrare nel campo Codice
+            codice_display = val_codice
+            
+            if is_edit and val_codice:
+                # Logica: Prende il codice attuale, lo splitta e sostituisce il prefisso in base al settore scelto
+                parts = val_codice.split("-") 
+                # Gestisce sia separatori "-" che "/" per sicurezza
+                if len(parts) < 2 and "/" in val_codice: parts = val_codice.split("/")
+                
+                if len(parts) >= 2:
+                    nuovo_prefisso = mappa_settori.get(settore, "GEN")
+                    # Ricostruisce il codice mantenendo anno e numero progressivo originali
+                    # Esempio: "RIL" (nuovo) + "2024" + "001" -> "RIL-2024-001"
+                    codice_display = f"{nuovo_prefisso}-{'-'.join(parts[1:])}"
+            elif not is_edit:
+                # Nuova commessa: Crea codice standard
+                prefisso = mappa_settori.get(settore, "RIL")
+                codice_display = f"{prefisso}-{anno}-001"
+
+            # Nota: Usiamo key="f_codice_calc" per visualizzarlo, ma il valore reale lo ricostruiremo al salvataggio se necessario
+            st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True, key="f_codice_visual")
+            
+            # Importante: Salviamo il codice calcolato in una variabile per usarlo dopo nel salvataggio
+            codice_finale = codice_display
+
+        # Stato
         with c4:
             idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
             stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
@@ -397,9 +431,10 @@ def render_commessa_form(data=None):
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto, placeholder="Es. Rilievo Chiesa...")
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # MODIFICA: Split colonna servizi per inserire Dettagli
+        # Servizi e Dettagli
         c_serv, c_dett = st.columns([2, 1])
         with c_serv:
+            # Assicurati che SERVIZI_LIST sia definito globalmente
             servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
         with c_dett:
             dettagli_servizi = st.text_input("Dettagli", value=val_dettagli, placeholder="Specifiche extra...")
@@ -971,9 +1006,6 @@ def render_dashboard():
     
     # --- SELETTORE MODIFICA SINGOLA ---
     if not df.empty:
-        # NOTA: Qui usiamo df completo o filtrato? Meglio usare df_filtered per coerenza con la selezione anno
-        # Ma se l'utente vuole cercare una commessa di un altro anno, deve cambiare filtro. 
-        # Per sicurezza lasciamo la ricerca globale nel dropdown:
         opts = []
         for _, row in df.iterrows():
              nome_show = str(row["Nome Commessa"])
@@ -993,7 +1025,7 @@ def render_dashboard():
     
     # --- IMPORT / EXPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO E CANCELLAZIONE</h3>", unsafe_allow_html=True)
+    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
     with c_actions:
         tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
         with tab_backup:
@@ -1012,7 +1044,7 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
-    # --- TABELLA GESTIONALE (SOLO PER CONSULTAZIONE ED ELIMINAZIONE) ---
+    # --- TABELLA GESTIONALE ---
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
@@ -1024,25 +1056,22 @@ def render_dashboard():
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        # Usiamo il DataFrame FILTRATO per l'anno selezionato, così l'utente vede quello che si aspetta
         df_to_edit = df_filtered.copy()
         df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         
-        # Rimuoviamo colonne interne
         cols_to_hide = ["_Fatturato_Calc_Interno", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-        # Configurazione Tabella
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
                 "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
             },
-            disabled=[c for c in actual_cols if c != "Elimina"], # Tutto disabilitato tranne la spunta di eliminazione
+            disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
             height=500,
@@ -1053,8 +1082,6 @@ def render_dashboard():
         
         if not rows_to_delete.empty:
             st.error(f"⚠️ ATTENZIONE: Hai selezionato {len(rows_to_delete)} commesse per l'ELIMINAZIONE.")
-            
-            # Pulsante rosso per confermare
             if st.button(f"🗑️ CONFERMA CANCELLAZIONE DI {len(rows_to_delete)} COMMESSE", type="primary"):
                 codici_da_eliminare = rows_to_delete["Codice"].tolist()
                 elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
@@ -1239,6 +1266,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
