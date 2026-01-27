@@ -884,7 +884,7 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. FUNZIONE PER CALCOLARE IL FATTURATO REALE DAL JSON ---
+        # --- 1. FUNZIONE PER CALCOLARE IL FATTURATO REALE DAL JSON (SOLO PER KPI) ---
         def calcola_incassato_reale(row):
             """
             Legge il campo Dati_JSON.
@@ -896,7 +896,7 @@ def render_dashboard():
             # Recupera il JSON
             raw_json = row.get("Dati_JSON", "")
             
-            # Se non c'è JSON, proviamo a usare la colonna 'Fatturato' manuale come fallback (o restituisci 0)
+            # Se non c'è JSON restituisce 0
             if pd.isna(raw_json) or str(raw_json).strip() == "":
                 return 0.0
 
@@ -942,8 +942,8 @@ def render_dashboard():
         # Convertiamo Anno in intero
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         
-        # CALCOLIAMO LA COLONNA FATTURATO REALE (basata sul JSON)
-        df["Fatturato_Calc"] = df.apply(calcola_incassato_reale, axis=1)
+        # CALCOLIAMO LA COLONNA TEMPORANEA PER I CONTEGGI (Non verrà mostrata in tabella)
+        df["_Fatturato_Calc_Interno"] = df.apply(calcola_incassato_reale, axis=1)
         
         # --- 3. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
@@ -953,13 +953,13 @@ def render_dashboard():
         c_filt, c_void = st.columns([1, 3])
         sel_anno_str = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
-        # Filtraggio DataFrame
+        # Filtraggio DataFrame per i KPI
         if sel_anno_str != "TOTALE":
             df_kpi = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
             df_kpi = df.copy()
 
-        # --- 4. KPI CARDS (FATTURATO REALE DA JSON) ---
+        # --- 4. KPI CARDS (USANO IL CALCOLO REALE) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -970,8 +970,8 @@ def render_dashboard():
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
             
-            # SOMMA DEL FATTURATO CALCOLATO DAL JSON
-            totale_settore = d_s['Fatturato_Calc'].sum()
+            # SOMMA DEL FATTURATO CALCOLATO DAL JSON (Solo incassati)
+            totale_settore = d_s['_Fatturato_Calc_Interno'].sum()
             
             with col:
                 # FORMATTAZIONE ITA: € 1.000,00
@@ -1012,13 +1012,13 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Rimuoviamo le colonne temporanee create per il calcolo
-                cols_to_drop = [c for c in ["Fatturato_Calc", "Settore_Norm", "Anno_Int"] if c in df.columns]
+                # Rimuoviamo la colonna interna di calcolo e la colonna Fatturato vecchia se presente
+                cols_to_drop = [c for c in ["_Fatturato_Calc_Interno", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
                 df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
         with tab_import:
             st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
-            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa", "Fatturato"])
+            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa"])
             buf_tpl = io.BytesIO()
             with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
             st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
@@ -1041,10 +1041,11 @@ def render_dashboard():
         df_to_edit = df.copy()
         df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
         
-        # Mostriamo nella tabella il valore calcolato dal JSON per chiarezza
-        df_to_edit["Fatturato"] = df_to_edit["Fatturato_Calc"]
+        # Rimuoviamo colonne calcolate dalla vista utente
+        cols_to_hide = ["_Fatturato_Calc_Interno", "Fatturato"] # Nascondiamo Fatturato se presente
+        df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
+        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
         edited_df = st.data_editor(
@@ -1052,7 +1053,6 @@ def render_dashboard():
             column_config={
                 "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
                 "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-                "Fatturato": st.column_config.NumberColumn(label="Fatturato (Reale)", format="€ %.2f", disabled=True),
             },
             disabled=[c for c in actual_cols if c != "Seleziona"],
             use_container_width=True,
@@ -1250,6 +1250,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
