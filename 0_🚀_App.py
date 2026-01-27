@@ -1,16 +1,3 @@
-Hai ragione, scusami. Ho fatto confusione mandandoti solo il pezzo finale e creando un "puzzle" difficile da incollare. Inoltre, ho lasciato delle icone nel codice precedente che non volevi.
-
-Ecco il codice **INTERO, UNICO e COMPLETO**.
-
-Ho fatto queste operazioni:
-
-1. **Unito tutto**: Non devi incollare nulla, questo codice sostituisce completamente quello che hai.
-2. **Rimosso le icone**: Ho tolto emoji (🚀, 🔒, 👤, ✅, 🗑️, ⚠️, ecc.) da pulsanti, titoli, toast e menu laterale. È tutto testo pulito.
-3. **Corretto la fine**: Ho sistemato la funzione `render_clienti_page` che nel tuo messaggio era tagliata a metà.
-
-Copia e incolla questo blocco intero nel tuo file:
-
-```python
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -680,3 +667,4 @@ else:
         render_societa_page()
 
 ```
+
