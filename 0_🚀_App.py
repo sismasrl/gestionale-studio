@@ -900,63 +900,36 @@ def render_dashboard():
     else:
         # --- 1. FUNZIONE PER CALCOLARE IL FATTURATO REALE DAL JSON (SOLO PER KPI) ---
         def calcola_incassato_reale(row):
-            """
-            Legge il campo Dati_JSON.
-            Va nella sezione 'incassi' (Piano Economico).
-            Somma 'Importo netto €' SOLO SE lo Stato è 'Fatturato'.
-            """
             totale_riga = 0.0
-            
-            # Recupera il JSON
             raw_json = row.get("Dati_JSON", "")
-            
-            # Se non c'è JSON restituisce 0
-            if pd.isna(raw_json) or str(raw_json).strip() == "":
-                return 0.0
+            if pd.isna(raw_json) or str(raw_json).strip() == "": return 0.0
 
             try:
                 dati = json.loads(str(raw_json))
-                incassi = dati.get("incassi", []) # Sezione 04 // PIANO ECONOMICO
-                
+                incassi = dati.get("incassi", [])
                 for item in incassi:
-                    # --- GESTIONE ANNIDAMENTO (es. 0:{...}) ---
                     dati_reali = item
-                    # Se l'item è un dizionario ma non ha le chiavi dirette, cerchiamo nei valori
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
                                 dati_reali = v
                                 break 
                     
-                    # --- CONTROLLO STATO ---
-                    # Normalizziamo lo stato (minuscolo e senza spazi)
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
-                    
-                    # CONTA SOLO SE è "Fatturato" (ignora "Previsto", "In attesa", ecc.)
                     if "fatturato" in stato:
                         raw_importo = dati_reali.get("Importo netto €", 0)
-                        
-                        # Pulizia del numero (toglie € e gestisce formati it/en)
                         str_importo = str(raw_importo).replace("€", "").strip()
                         if "," in str_importo and "." in str_importo:
                             str_importo = str_importo.replace(".", "").replace(",", ".")
                         elif "," in str_importo:
                             str_importo = str_importo.replace(",", ".")
-                        
-                        try:
-                            totale_riga += float(str_importo)
-                        except:
-                            pass
-            except:
-                return 0.0
-                
+                        try: totale_riga += float(str_importo)
+                        except: pass
+            except: return 0.0
             return totale_riga
 
         # --- 2. PREPARAZIONE DATI ---
-        # Convertiamo Anno in intero
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        
-        # CALCOLIAMO LA COLONNA TEMPORANEA PER I CONTEGGI (Non verrà mostrata in tabella)
         df["_Fatturato_Calc_Interno"] = df.apply(calcola_incassato_reale, axis=1)
         
         # --- 3. FILTRI ---
@@ -965,36 +938,29 @@ def render_dashboard():
         anni_opts = ["TOTALE"] + [str(x) for x in anni_disponibili]
         
         c_filt, c_void = st.columns([1, 3])
-        sel_anno_str = c_filt.selectbox("Filtra per Anno:", anni_opts)
+        sel_anno_str = c_filt.selectbox("Filtra Dashboard e Archivio per Anno:", anni_opts)
         
-        # Filtraggio DataFrame per i KPI
+        # Filtraggio DataFrame
         if sel_anno_str != "TOTALE":
-            df_kpi = df[df["Anno"] == int(sel_anno_str)].copy()
+            df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
-            df_kpi = df.copy()
+            df_filtered = df.copy()
 
-        # --- 4. KPI CARDS (USANO IL CALCOLO REALE) ---
+        # --- 4. KPI CARDS ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
-        
-        # Normalizzazione Settore
-        df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
+        df_filtered["Settore_Norm"] = df_filtered["Settore"].astype(str).str.upper().str.strip()
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
-            d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
-            
-            # SOMMA DEL FATTURATO CALCOLATO DAL JSON (Solo incassati)
+            d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
             totale_settore = d_s['_Fatturato_Calc_Interno'].sum()
-            
             with col:
-                # FORMATTAZIONE ITA: € 1.000,00
                 val_fmt = f"{totale_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                
                 st.markdown(f"""
                 <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO TOTALE {sel_anno_str}</div>
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno_str}</div>
                     <div style="font-size:24px; color:white; font-weight:bold;">€ {val_fmt}</div>
                     <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
@@ -1005,14 +971,21 @@ def render_dashboard():
     
     # --- SELETTORE MODIFICA SINGOLA ---
     if not df.empty:
+        # NOTA: Qui usiamo df completo o filtrato? Meglio usare df_filtered per coerenza con la selezione anno
+        # Ma se l'utente vuole cercare una commessa di un altro anno, deve cambiare filtro. 
+        # Per sicurezza lasciamo la ricerca globale nel dropdown:
         opts = []
         for _, row in df.iterrows():
              nome_show = str(row["Nome Commessa"])
              cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
              opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
+        
+        st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto (NON dalla tabella in basso).")
         sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
+        
         if sel:
             cod = sel.split(" | ")[0]
+            # Passiamo i dati al form
             render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
             return
 
@@ -1020,13 +993,12 @@ def render_dashboard():
     
     # --- IMPORT / EXPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO COMPLETO</h3>", unsafe_allow_html=True)
+    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO E CANCELLAZIONE</h3>", unsafe_allow_html=True)
     with c_actions:
         tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Rimuoviamo la colonna interna di calcolo e la colonna Fatturato vecchia se presente
                 cols_to_drop = [c for c in ["_Fatturato_Calc_Interno", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
                 df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
@@ -1040,7 +1012,7 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
-    # --- TABELLA GESTIONALE ---
+    # --- TABELLA GESTIONALE (SOLO PER CONSULTAZIONE ED ELIMINAZIONE) ---
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
@@ -1052,35 +1024,38 @@ def render_dashboard():
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        df_to_edit = df.copy()
-        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+        # Usiamo il DataFrame FILTRATO per l'anno selezionato, così l'utente vede quello che si aspetta
+        df_to_edit = df_filtered.copy()
+        df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         
-        # Rimuoviamo colonne calcolate dalla vista utente
-        cols_to_hide = ["_Fatturato_Calc_Interno", "Fatturato"] # Nascondiamo Fatturato se presente
+        # Rimuoviamo colonne interne
+        cols_to_hide = ["_Fatturato_Calc_Interno", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
+        cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
+        # Configurazione Tabella
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
-                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
+                "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
                 "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
             },
-            disabled=[c for c in actual_cols if c != "Seleziona"],
+            disabled=[c for c in actual_cols if c != "Elimina"], # Tutto disabilitato tranne la spunta di eliminazione
             use_container_width=True,
             hide_index=True,
             height=500,
             key="archive_editor"
         )
 
-        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
+        rows_to_delete = edited_df[edited_df["Elimina"] == True]
         
         if not rows_to_delete.empty:
-            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
+            st.error(f"⚠️ ATTENZIONE: Hai selezionato {len(rows_to_delete)} commesse per l'ELIMINAZIONE.")
             
-            if st.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
+            # Pulsante rosso per confermare
+            if st.button(f"🗑️ CONFERMA CANCELLAZIONE DI {len(rows_to_delete)} COMMESSE", type="primary"):
                 codici_da_eliminare = rows_to_delete["Codice"].tolist()
                 elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
                 
@@ -1264,6 +1239,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
