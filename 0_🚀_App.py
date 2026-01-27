@@ -876,6 +876,10 @@ def render_clienti_page():
                  # st.rerun()
                  pass
 
+import json
+import pandas as pd
+import streamlit as st
+
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     # Ricarica i dati forzando la lettura fresca
@@ -1214,6 +1218,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
