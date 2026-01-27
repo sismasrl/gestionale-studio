@@ -534,22 +534,36 @@ def render_commessa_form(data=None):
         }
         order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
         
-        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
+        edited_incassi = st.data_editor(
+            st.session_state["stato_incassi"], 
+            num_rows="dynamic", 
+            column_config=col_cfg, 
+            column_order=order_cols, 
+            use_container_width=True, 
+            key="ed_inc"
+        )
         
+        # --- LOGICA DI AGGIORNAMENTO CORRETTA ---
         ricalcolo = edited_incassi.copy()
+        
+        # 1. Esegui sempre il calcolo matematico sul dataframe modificato dall'utente
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
-        diff = False
-        try:
-            if not ricalcolo["Importo lordo €"].equals(st.session_state["stato_incassi"]["Importo lordo €"]): diff = True
-            if not ricalcolo["Importo netto €"].equals(st.session_state["stato_incassi"]["Importo netto €"]): diff = True
-        except: diff = True
-        if diff:
+        
+        # 2. CONFRONTO TOTALE: 
+        # Se c'è una qualsiasi differenza (Stato cambiato, Importo cambiato, Note cambiate, etc.)
+        # rispetto a quello che c'è in memoria, aggiorna e ricarica.
+        if not ricalcolo.equals(st.session_state["stato_incassi"]):
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
+        # --- VISUALIZZAZIONE TOTALI ---
         tot_net = st.session_state["stato_incassi"]["Importo netto €"].sum()
         tot_lordo = st.session_state["stato_incassi"]["Importo lordo €"].sum()
-        fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'] == 'Fatturato']['Importo netto €'].sum()
+        
+        # Questo serve solo per debug o visualizzazione, non impatta la dashboard principale che legge dal JSON salvato
+        fatturato_netto = st.session_state["stato_incassi"][
+            st.session_state["stato_incassi"]['Stato'].astype(str) == 'Fatturato'
+        ]['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
         
@@ -1250,6 +1264,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
