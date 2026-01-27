@@ -867,45 +867,63 @@ def render_clienti_page():
                  pass
 
 # --- 5. DASHBOARD & IMPORT ---
-# --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     df = carica_dati("Foglio1")
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
+    
     if df.empty: 
         st.info("Nessun dato.")
     else:
-        # Preparazione dati
+        # --- 1. PULIZIA DATI (Fondamentale per i calcoli) ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
         
-        # Filtro Anno
+        # Pulizia robusta Fatturato (gestisce sia stringhe "1.000,00 €" che numeri puri)
+        if "Fatturato" in df.columns:
+            # Toglie simbolo Euro e spazi
+            df["Fatturato"] = df["Fatturato"].astype(str).str.replace('€', '', regex=False).str.strip()
+            # Toglie il punto delle migliaia (es. 1.000 diventa 1000)
+            df["Fatturato"] = df["Fatturato"].str.replace('.', '', regex=False)
+            # Sostituisce la virgola decimale con il punto
+            df["Fatturato"] = df["Fatturato"].str.replace(',', '.', regex=False)
+            # Converte in numero
+            df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
+        else:
+            df["Fatturato"] = 0.0
+        
+        # --- 2. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
+        if 0 in anni_disponibili: anni_disponibili.remove(0) # Rimuove anni non validi
         anni_opts = ["TOTALE"] + anni_disponibili
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
-        # Filtraggio
         if sel_anno != "TOTALE":
             df_kpi = df[df["Anno"] == sel_anno]
         else:
             df_kpi = df
 
-        # --- KPI CARDS (FATTURATO ANNUALE) ---
+        # --- 3. KPI CARDS (FATTURATO) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         
+        # Normalizziamo il settore per il confronto (tutto maiuscolo)
+        df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
+
         for i, (nome, col) in enumerate(zip(settori, cols)):
-            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
+            d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
             tot_fatt = d_s['Fatturato'].sum()
             
             with col:
+                # FORMATTAZIONE RICHIESTA: € 1000.00 (Nessuna virgola, punto decimale)
+                formatted_price = f"€ {tot_fatt:.2f}"
+                
                 st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
+                <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
                     <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
-                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
+                    <div style="font-size:24px; color:white; font-weight:bold;">{formatted_price}</div>
                     <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1172,6 +1190,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
