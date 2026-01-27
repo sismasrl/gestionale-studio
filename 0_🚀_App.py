@@ -675,6 +675,8 @@ def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
     st.markdown("---")
     c_form, c_list = st.columns([1, 2], gap="large")
+
+    # --- COLONNA SINISTRA: FORM DI INSERIMENTO/MODIFICA ---
     with c_form:
         st.markdown("<h3 style='text-align: center;'>GESTIONE</h3>", unsafe_allow_html=True)
         df = carica_dati("Clienti")
@@ -703,6 +705,7 @@ def render_clienti_page():
             chk_active = c_att.checkbox("Attivo", value=curr_active)
             chk_inactive = c_dis.checkbox("Non Attivo", value=not curr_active)
             note = st.text_area("Note", value=d.get("Note", ""))
+            
             if st.form_submit_button("SALVA"):
                 if not den: st.error("Nome obbligatorio")
                 else:
@@ -710,146 +713,78 @@ def render_clienti_page():
                     rec = {"Denominazione": den, "P_IVA": piva, "Sede": sede, "Referente": ref, "Telefono": tel, "Email": mail, "Contatto_SISMA": cont, "Settore": sett, "Attivo": final_state, "Note": note}
                     salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
                     st.rerun()
+        
         if sel and st.button("ELIMINA CLIENTE"): elimina_record(sel, "Clienti", "Denominazione")
 
+    # --- COLONNA DESTRA: LISTA E IMPORT/EXPORT ---
     with c_list:
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
+        
+        # --- SEZIONE IMPORT / EXPORT AGGIUNTA ---
+        with st.expander("📂 IMPORT / EXPORT EXCEL", expanded=False):
+            k1, k2 = st.columns(2)
+            
+            # EXPORT
+            with k1:
+                st.markdown("**Esporta Rubrica**")
+                if not df.empty:
+                    buffer_cli = io.BytesIO()
+                    with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
+                        # Esportiamo il DF originale per mantenere la compatibilità dei dati (es. Attivo=TRUE/FALSE stringa)
+                        df.to_excel(writer_cli, index=False, sheet_name='Rubrica')
+                    st.download_button(
+                        label="📥 SCARICA EXCEL", 
+                        data=buffer_cli, 
+                        file_name=f"Rubrica_Clienti_{date.today()}.xlsx", 
+                        mime="application/vnd.ms-excel",
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Nessun dato da esportare.")
+
+            # IMPORT
+            with k2:
+                st.markdown("**Importa Clienti**")
+                uploaded_file = st.file_uploader("Carica file .xlsx", type=["xlsx"], label_visibility="collapsed")
+                if uploaded_file is not None:
+                    if st.button("CARICA DATI NEL DB", use_container_width=True):
+                        try:
+                            df_new = pd.read_excel(uploaded_file)
+                            # Riempie i valori nulli per evitare errori
+                            df_new = df_new.fillna("")
+                            count = 0
+                            for index, row in df_new.iterrows():
+                                # Crea il record convertendo la riga in dizionario
+                                rec_import = row.to_dict()
+                                # Assicurati che ci sia almeno la denominazione
+                                if "Denominazione" in rec_import and rec_import["Denominazione"]:
+                                    # Usa "update" per sovrascrivere se esiste, o creare se nuovo
+                                    salva_record(rec_import, "Clienti", "Denominazione", "update")
+                                    count += 1
+                            st.success(f"Importati/Aggiornati {count} clienti con successo!")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Errore durante l'importazione: {e}")
+
+        st.divider()
+
+        # --- VISUALIZZAZIONE TABELLA ---
         if not df.empty:
             df_view = df.copy()
+            # Conversione visuale per la colonna attivo
             df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
-            df_view["Non Attivo"] = ~df_view["Attivo"] 
+            
             target_cols = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Settore", "Attivo"]
             final_cols = [c for c in target_cols if c in df_view.columns]
-            st.dataframe(df_view[final_cols], column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, use_container_width=True, hide_index=True)
             
-            buffer_cli = io.BytesIO()
-            with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
-                df_view.to_excel(writer_cli, index=False, sheet_name='Rubrica')
-            st.download_button(label="📥 BACKUP CLIENTI", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel")
-# --- 5. DASHBOARD & IMPORT ---
-def render_dashboard():
-    df = carica_dati("Foglio1")
-    st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
-    if df.empty: 
-        st.info("Nessun dato.")
-    else:
-        # Preparazione dati
-        df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
-        
-        # Filtro Anno
-        anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
-        anni_opts = ["TOTALE"] + anni_disponibili
-        
-        c_filt, c_void = st.columns([1, 3])
-        sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
-        
-        # Filtraggio
-        if sel_anno != "TOTALE":
-            df_kpi = df[df["Anno"] == sel_anno]
-        else:
-            df_kpi = df
-
-        # --- KPI CARDS (FATTURATO ANNUALE) ---
-        palette = ["#14505f", "#1d6677", "#287d8f"]
-        cols = st.columns(3)
-        settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
-        
-        for i, (nome, col) in enumerate(zip(settori, cols)):
-            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
-            tot_fatt = d_s['Fatturato'].sum()
-            
-            with col:
-                st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
-                    <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
-                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
-                    <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
-    
-    # --- SELETTORE MODIFICA SINGOLA ---
-    if not df.empty:
-        opts = []
-        for _, row in df.iterrows():
-             nome_show = str(row["Nome Commessa"])
-             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
-             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
-        sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
-        if sel:
-            cod = sel.split(" | ")[0]
-            render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
-            return
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # --- IMPORT / EXPORT ---
-    c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO COMPLETO</h3>", unsafe_allow_html=True)
-    with c_actions:
-        tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
-        with tab_backup:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Archivio_SISMA')
-            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
-        with tab_import:
-            st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
-            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa", "Fatturato"])
-            buf_tpl = io.BytesIO()
-            with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
-            st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
-            uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
-            if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
-                importa_excel_batch(uploaded_file)
-
-    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
-    if not df.empty:
-        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
-
-        # Pulsanti Compatti (Colonne strette 0.6)
-        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
-        if c_sel_all.button("Seleziona Tutto"):
-            st.session_state["select_all_state"] = True
-            st.rerun()
-        if c_deselect.button("Deseleziona"):
-            st.session_state["select_all_state"] = False
-            st.rerun()
-
-        # Prep DF
-        df_to_edit = df.copy()
-        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
-
-        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
-        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
-
-        edited_df = st.data_editor(
-            df_to_edit[actual_cols],
-            column_config={
-                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
-                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-                "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
-            },
-            disabled=[c for c in actual_cols if c != "Seleziona"],
-            use_container_width=True,
-            hide_index=True,
-            height=500,
-            key="archive_editor"
-        )
-
-        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
-        
-        if not rows_to_delete.empty:
-            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
-            col_del_btn, col_del_info = st.columns([1, 3])
-            
-            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
-                codici_da_eliminare = rows_to_delete["Codice"].tolist()
-                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+            st.dataframe(
+                df_view[final_cols], 
+                column_config={"Attivo": st.column_config.CheckboxColumn(disabled=True)}, 
+                use_container_width=True, 
+                hide_index=True,
+                height=500
+            )
 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1031,6 +966,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
