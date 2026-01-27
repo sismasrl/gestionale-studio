@@ -857,19 +857,19 @@ def render_dashboard():
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Azione (Aggiunto Modifica)
-        c_sel_all, c_deselect, c_modifica, c_space = st.columns([0.6, 0.6, 0.8, 3.4])
+        # --- PULSANTI AZIONE (Modificati come richiesto) ---
+        c_sel_all, c_deselect, c_modifica, c_space = st.columns([1, 1, 1, 3])
         
-        if c_sel_all.button("Seleziona Tutto"):
+        if c_sel_all.button("Seleziona Tutto", use_container_width=True):
             st.session_state["select_all_state"] = True
             st.rerun()
             
-        if c_deselect.button("Deseleziona"):
+        if c_deselect.button("Deseleziona", use_container_width=True):
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        # Catturiamo il click su Modifica (la logica viene applicata dopo aver letto edited_df)
-        req_modifica = c_modifica.button("✏️ MODIFICA")
+        # Tasto Modifica
+        req_modifica = c_modifica.button("Modifica", use_container_width=True)
 
         # Prep DF
         df_to_edit = df.copy()
@@ -1100,6 +1100,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
