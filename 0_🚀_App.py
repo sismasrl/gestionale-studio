@@ -552,9 +552,13 @@ def render_commessa_form(data=None):
         fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'] == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
-        # MODIFICA: Formattazione diretta € 1000.00
-        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {tot_net:.2f}</div></div>", unsafe_allow_html=True)
-        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {tot_lordo:.2f}</div></div>", unsafe_allow_html=True)
+        
+        # FORMATTAZIONE ITA: 1.000,00
+        t_net_fmt = f"{tot_net:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        t_lor_fmt = f"{tot_lordo:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {t_net_fmt}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {t_lor_fmt}</div></div>", unsafe_allow_html=True)
 
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
@@ -601,29 +605,36 @@ def render_commessa_form(data=None):
             b1, b2, b3, b4 = st.columns(4, gap="small")
             with b1:
                 val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                # MODIFICA: Formattazione diretta € 1000.00
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {val_portatore:.2f}</div></div>", unsafe_allow_html=True)
+                # FORMATTAZIONE ITA
+                v_port_fmt = f"{val_portatore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {v_port_fmt}</div></div>", unsafe_allow_html=True)
                 new_perc_port = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_portatore"]), step=1, format="%d", key="num_port", label_visibility="collapsed")
                 if new_perc_port != st.session_state["perc_portatore"]:
                     st.session_state["perc_portatore"] = new_perc_port
                     st.rerun()
             with b2:
                 val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                # MODIFICA: Formattazione diretta € 1000.00
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {val_societa:.2f}</div></div>", unsafe_allow_html=True)
+                # FORMATTAZIONE ITA
+                v_soc_fmt = f"{val_societa:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {v_soc_fmt}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc. %", 0, 100, int(st.session_state["perc_societa"]), step=1, format="%d", key="num_soc", label_visibility="collapsed")
                 if new_perc_soc != st.session_state["perc_societa"]:
                     st.session_state["perc_societa"] = new_perc_soc
                     st.rerun()
             val_iva = tot_lordo - tot_net
             with b3: 
-                # MODIFICA: Formattazione diretta € 1000.00
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {val_iva:.2f}</div></div>", unsafe_allow_html=True)
+                # FORMATTAZIONE ITA
+                v_iva_fmt = f"{val_iva:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {v_iva_fmt}</div></div>", unsafe_allow_html=True)
+            
             val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
             color_utili = "#ff4b4b" if val_utili < 0 else "#ffffff"
             with b4: 
-                # MODIFICA: Formattazione diretta € 1000.00
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI NETTI COMMESSA</div><div class='total-value' style='color: {color_utili};'>€ {val_utili:.2f}</div></div>", unsafe_allow_html=True)
+                # FORMATTAZIONE ITA
+                v_utili_fmt = f"{val_utili:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI NETTI COMMESSA</div><div class='total-value' style='color: {color_utili};'>€ {v_utili_fmt}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
@@ -1214,6 +1225,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
