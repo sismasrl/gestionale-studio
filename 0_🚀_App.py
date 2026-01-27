@@ -884,41 +884,47 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato.")
     else:
-        # --- 1. PULIZIA DATI INTELLIGENTE ---
+        # --- 1. PULIZIA DATI & CALCOLO REAL-TIME ---
+        # Funzione per pulire numeri grezzi (per colonne standard)
         def converti_valuta_smart(x):
             try:
-                # Se è vuoto o nullo
-                if pd.isna(x) or str(x).strip() == "": 
-                    return 0.0
-                
-                # Se è già un numero (int o float), lo restituiamo come float
-                if isinstance(x, (int, float)): 
-                    return float(x)
-                
-                # Se è una stringa, puliamo la formattazione
+                if pd.isna(x) or str(x).strip() == "": return 0.0
+                if isinstance(x, (int, float)): return float(x)
                 s = str(x).replace("€", "").strip()
-                
-                # Algoritmo per interpretare la stringa
-                # Se contiene sia punti che virgole (es. 1.000,50) -> Formato ITA
-                if "." in s and "," in s:
-                    s = s.replace(".", "").replace(",", ".")
-                # Se contiene solo la virgola (es. 1000,50) -> Formato ITA
-                elif "," in s:
-                    s = s.replace(",", ".")
-                # Se contiene solo il punto, verifichiamo se è un separatore migliaia o decimale
-                # (Assumiamo decimale se c'è un solo punto verso la fine, altrimenti rischioso, ma standard python è punto=decimale)
-                
+                if "." in s and "," in s: s = s.replace(".", "").replace(",", ".")
+                elif "," in s: s = s.replace(",", ".")
                 return float(s)
-            except:
-                return 0.0
+            except: return 0.0
 
+        # Funzione CRUCIALE: Estrae il fatturato reale dal JSON (Piano Economico)
+        # Questo risolve il problema del mancato aggiornamento
+        def get_fatturato_live(row):
+            # 1. Prova a calcolare dai dati JSON (Fonte veritiera)
+            try:
+                if "Dati_JSON" in row and pd.notna(row["Dati_JSON"]) and str(row["Dati_JSON"]).strip() != "":
+                    dati = json.loads(row["Dati_JSON"])
+                    incassi = dati.get("incassi", [])
+                    totale_fatturato = sum(
+                        float(inc.get("Importo netto €", 0)) 
+                        for inc in incassi 
+                        if inc.get("Stato") == "Fatturato"
+                    )
+                    return totale_fatturato
+            except:
+                pass
+            
+            # 2. Fallback: Se non c'è JSON, usa la colonna Excel pulita
+            return converti_valuta_smart(row.get("Fatturato", 0))
+
+        # Normalizzazione Anno
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         
-        # Applica la conversione alla colonna Fatturato
-        if "Fatturato" in df.columns:
-            df["Fatturato"] = df["Fatturato"].apply(converti_valuta_smart)
-        else:
-            df["Fatturato"] = 0.0
+        # AGGIORNAMENTO DATI: Sovrascriviamo la colonna Fatturato con il calcolo LIVE
+        df["Fatturato"] = df.apply(get_fatturato_live, axis=1)
+        
+        # Puliamo anche Totale Commessa per sicurezza
+        if "Totale Commessa" in df.columns:
+            df["Totale Commessa"] = df["Totale Commessa"].apply(converti_valuta_smart)
         
         # --- 2. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
@@ -938,7 +944,7 @@ def render_dashboard():
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         
-        # Normalizzazione Settore
+        # Normalizzazione Settore per il confronto
         df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
@@ -947,7 +953,7 @@ def render_dashboard():
             
             with col:
                 # FORMATTAZIONE ITALIANA: € 1.000,00
-                # Usiamo un trucco: formattiamo standard (1,000.00) e poi invertiamo i segni
+                # Usiamo replace per invertire virgola e punto standard
                 val_fmt = f"{tot_fatt:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 formatted_price = f"€ {val_fmt}"
                 
@@ -973,7 +979,6 @@ def render_dashboard():
         sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
         if sel:
             cod = sel.split(" | ")[0]
-            # Passiamo una copia del record per evitare errori di riferimento
             render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
             return
 
@@ -987,7 +992,6 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Esportiamo il DF originale (senza colonne di servizio create per la dashboard)
                 cols_to_drop = ["Settore_Norm"] if "Settore_Norm" in df.columns else []
                 df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
@@ -1001,11 +1005,10 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
-    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
+    # --- TABELLA GESTIONALE ---
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Compatti
         c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
@@ -1014,7 +1017,6 @@ def render_dashboard():
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        # Prep DF
         df_to_edit = df.copy()
         df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
 
@@ -1225,6 +1227,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
