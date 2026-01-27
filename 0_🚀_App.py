@@ -876,49 +876,73 @@ def render_clienti_page():
                  # st.rerun()
                  pass
 
-import json
-import pandas as pd
-import streamlit as st
-
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     df = carica_dati("Foglio1")
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
+    
     if df.empty: 
-        st.info("Nessun dato.")
+        st.info("Nessun dato in archivio.")
     else:
-        # Preparazione dati
+        # --- 1. FUNZIONE DI PULIZIA NUMERI (Universalmente valida) ---
+        def clean_number_euro(val):
+            if pd.isna(val) or str(val).strip() == "": return 0.0
+            if isinstance(val, (int, float)): return float(val)
+            
+            # Rimuovi € e spazi
+            s = str(val).replace("€", "").strip()
+            # Gestione formati (1.000,00 vs 1000.00)
+            if "." in s and "," in s: s = s.replace(".", "").replace(",", ".") # Formato ITA esteso
+            elif "," in s: s = s.replace(",", ".") # Formato ITA semplice
+            
+            try: return float(s)
+            except: return 0.0
+
+        # --- 2. PREPARAZIONE DATI ---
+        # Convertiamo Anno in intero
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
         
-        # Filtro Anno
+        # Convertiamo le colonne monetarie in numeri puri
+        df["Totale Commessa Num"] = df["Totale Commessa"].apply(clean_number_euro)
+        df["Fatturato Num"] = df["Fatturato"].apply(clean_number_euro)
+        
+        # --- 3. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
+        if 0 in anni_disponibili: anni_disponibili.remove(0)
         anni_opts = ["TOTALE"] + anni_disponibili
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
         
-        # Filtraggio
         if sel_anno != "TOTALE":
-            df_kpi = df[df["Anno"] == sel_anno]
+            df_kpi = df[df["Anno"] == sel_anno].copy()
         else:
-            df_kpi = df
+            df_kpi = df.copy()
 
-        # --- KPI CARDS (FATTURATO ANNUALE) ---
+        # --- 4. KPI CARDS (BASATE SU TOTALE COMMESSA) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         
+        # Normalizzazione Settore (Maiuscolo e senza spazi per confronto sicuro)
+        df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
+
         for i, (nome, col) in enumerate(zip(settori, cols)):
-            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
-            tot_fatt = d_s['Fatturato'].sum()
+            # Filtra il settore
+            d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
+            
+            # --- MODIFICA RICHIESTA: SOMMA DEI TOTALI COMMESSA ---
+            totale_settore = d_s['Totale Commessa Num'].sum()
             
             with col:
+                # FORMATTAZIONE ITA: € 1.000,00
+                val_fmt = f"{totale_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
                 st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
+                <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
-                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">VALORE COMMESSE {sel_anno}</div>
+                    <div style="font-size:24px; color:white; font-weight:bold;">€ {val_fmt}</div>
                     <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -949,7 +973,9 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Archivio_SISMA')
+                # Rimuoviamo le colonne temporanee create per il calcolo prima di esportare
+                cols_to_drop = [c for c in ["Totale Commessa Num", "Fatturato Num", "Settore_Norm"] if c in df.columns]
+                df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
         with tab_import:
             st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
@@ -961,11 +987,10 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
-    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
+    # --- TABELLA GESTIONALE ---
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Compatti (Colonne strette 0.6)
         c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
@@ -974,7 +999,6 @@ def render_dashboard():
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        # Prep DF
         df_to_edit = df.copy()
         df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
 
@@ -1185,6 +1209,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
