@@ -298,7 +298,7 @@ def importa_excel_batch(uploaded_file):
             else: st.error("❌ Nessun dato valido trovato.")
     except Exception as e: st.error(f"Errore Import: {e}")
 
-# --- 3. FORM COMMESSA (AGGIORNATO) ---
+# --- 3. FORM COMMESSA (AGGIORNATO CON FORMATO SLASH) ---
 def render_commessa_form(data=None):
     is_edit = data is not None
     
@@ -330,7 +330,7 @@ def render_commessa_form(data=None):
 
     # Gestione dati in modifica vs nuovo
     if is_edit:
-        val_codice_originale = data["Codice"] # Salviamo il codice originale per il confronto
+        val_codice_originale = data["Codice"] 
         val_anno = int(data.get("Anno", 2024))
         val_oggetto = data.get("Nome Commessa", "") 
         try:
@@ -386,30 +386,31 @@ def render_commessa_form(data=None):
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
-        # --- FIX CODICE CALCOLATO ---
+        # --- FIX CODICE: FORMATO RIL/2026-001 ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
             codice_display = val_codice_originale
             
             if is_edit and val_codice_originale:
-                # Usa Regex per dividere su trattini O slash (es. RIL-2024-001 o RIL/2024/001)
+                # Splitta sia se c'è / sia se c'è -
                 parts = re.split(r'[-/]', val_codice_originale)
                 
-                # Se abbiamo almeno 3 parti (es: PREFISSO, ANNO, NUMERO)
+                # Caso standard: PREFISSO / ANNO - NUMERO
                 if len(parts) >= 3:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    # Ricostruisce SEMPRE con i trattini standard: PRE-ANNO-NUM
-                    codice_display = f"{nuovo_prefisso}-{parts[1]}-{parts[2]}"
-                # Fallback se il codice era strano (es. solo RIL-001)
+                    # FORMATO CORRETTO QUI: Slash dopo prefisso, trattino prima del numero
+                    codice_display = f"{nuovo_prefisso}/{parts[1]}-{parts[2]}"
+                
                 elif len(parts) >= 2:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    codice_display = f"{nuovo_prefisso}-{parts[-1]}"
+                    codice_display = f"{nuovo_prefisso}/{parts[-1]}"
             elif not is_edit:
                 prefisso = mappa_settori.get(settore, "RIL")
-                codice_display = f"{prefisso}-{anno}-001"
+                # FORMATO NUOVO: Slash e Trattino
+                codice_display = f"{prefisso}/{anno}-001"
 
             st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
-            codice_finale = codice_display # Variabile critica per il salvataggio
+            codice_finale = codice_display 
 
         with c4:
             idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
@@ -475,7 +476,7 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
         portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # --- DATAFRAMES (INCASSI, SOCI, ETC) ---
+    # --- DATAFRAMES ---
     if "stato_incassi" not in st.session_state:
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data": date.today(), "Note": ""}])
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -492,7 +493,6 @@ def render_commessa_form(data=None):
             except: pass
         st.session_state["stato_incassi"] = df_init
     
-    # Init Dataframes Spese
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
     df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
     df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data": None, "Note": ""}])
@@ -618,13 +618,11 @@ def render_commessa_form(data=None):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
         else:
-            # 1. Gestione Cliente
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
                 rec_cliente = {"Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO"}
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # 2. Preparazione JSON
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             json_data = json.dumps({
@@ -639,16 +637,14 @@ def render_commessa_form(data=None):
             tot_uscite = val_portatore + val_societa + sum_soci + sum_collab + sum_spese
             utile_netto = tot_net - tot_uscite
 
-            # 3. FIX DUPLICAZIONE: Controlliamo se il codice è cambiato
+            # GESTIONE DUPLICATI / CAMBIO CODICE
             mode_save = "update"
             if is_edit:
                 if codice_finale != val_codice_originale:
-                    # Se il codice è cambiato (es. da RIL a ARC), dobbiamo CANCELLARE il vecchio record
-                    # altrimenti avremo un duplicato (RIL esiste ancora e creiamo ARC)
                     elimina_record(val_codice_originale, "Foglio1", "Codice")
-                    mode_save = "new" # Salviamo il nuovo come 'new' inserimento
+                    mode_save = "new" 
                 else:
-                    mode_save = "update" # Codice identico, aggiorniamo normalmente
+                    mode_save = "update"
             else:
                 mode_save = "new"
 
@@ -1205,6 +1201,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
