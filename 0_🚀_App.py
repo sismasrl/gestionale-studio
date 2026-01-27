@@ -821,7 +821,7 @@ def render_dashboard():
             
             with col:
                 st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:20px; border:1px solid {COL_ACCENT}; border-radius:4px; text-align:center;">
+                <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
                     <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
                     <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
@@ -830,26 +830,10 @@ def render_dashboard():
                 """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
-    
-    # --- SELETTORE MODIFICA SINGOLA ---
-    if not df.empty:
-        opts = []
-        for _, row in df.iterrows():
-             nome_show = str(row["Nome Commessa"])
-             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
-             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
-        sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
-        if sel:
-            cod = sel.split(" | ")[0]
-            render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
-            return
-
-    st.markdown("<br>", unsafe_allow_html=True)
     
     # --- IMPORT / EXPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO COMPLETO</h3>", unsafe_allow_html=True)
+    with c_title: st.markdown("<h2 style='text-align: left; margin-top:0;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
     with c_actions:
         tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
         with tab_backup:
@@ -867,18 +851,25 @@ def render_dashboard():
             if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
                 importa_excel_batch(uploaded_file)
 
-    # --- TABELLA GESTIONALE CON CANCELLAZIONE MULTIPLA ---
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- TABELLA GESTIONALE CON MODIFICA E CANCELLAZIONE ---
     if not df.empty:
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-        # Pulsanti Compatti (Colonne strette 0.6)
-        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
+        # Pulsanti Azione (Aggiunto Modifica)
+        c_sel_all, c_deselect, c_modifica, c_space = st.columns([0.6, 0.6, 0.8, 3.4])
+        
         if c_sel_all.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
             st.rerun()
+            
         if c_deselect.button("Deseleziona"):
             st.session_state["select_all_state"] = False
             st.rerun()
+
+        # Catturiamo il click su Modifica (la logica viene applicata dopo aver letto edited_df)
+        req_modifica = c_modifica.button("✏️ MODIFICA")
 
         # Prep DF
         df_to_edit = df.copy()
@@ -901,14 +892,32 @@ def render_dashboard():
             key="archive_editor"
         )
 
-        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
+        # Filtra le righe selezionate
+        rows_selected = edited_df[edited_df["Seleziona"] == True]
         
-        if not rows_to_delete.empty:
-            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
+        # --- LOGICA DEL PULSANTE MODIFICA ---
+        if req_modifica:
+            if rows_selected.empty:
+                st.warning("⚠️ Seleziona una commessa dalla tabella per modificarla.")
+            elif len(rows_selected) > 1:
+                st.warning("⚠️ Seleziona solo una commessa alla volta per la modifica.")
+            else:
+                # Recupera il codice dalla selezione
+                cod_sel = rows_selected.iloc[0]["Codice"]
+                # Recupera il record completo dal DF originale (per avere anche colonne nascoste)
+                record_completo = df[df["Codice"].astype(str) == str(cod_sel)].iloc[0].to_dict()
+                # Apre il form di modifica
+                render_commessa_form(record_completo)
+                return # Interrompe l'esecuzione della dashboard per mostrare il form
+
+        # --- LOGICA DEL PULSANTE ELIMINA ( appare solo se ci sono selezioni) ---
+        if not rows_selected.empty:
+            st.markdown("---")
+            st.warning(f"⚠️ Hai selezionato {len(rows_selected)} commesse.")
             col_del_btn, col_del_info = st.columns([1, 3])
             
-            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
-                codici_da_eliminare = rows_to_delete["Codice"].tolist()
+            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_selected)} COMMESSE", type="primary"):
+                codici_da_eliminare = rows_selected["Codice"].tolist()
                 elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
 
 # --- 6. ORGANIGRAMMA ---
@@ -1091,5 +1100,6 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
