@@ -787,138 +787,109 @@ def render_clienti_page():
             )
 
 # --- 5. DASHBOARD & IMPORT ---
-def render_dashboard():
-    df = carica_dati("Foglio1")
-    st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
-    if df.empty: 
-        st.info("Nessun dato.")
-    else:
-        # Preparazione dati
-        df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        df["Fatturato"] = pd.to_numeric(df["Fatturato"], errors='coerce').fillna(0.0)
-        
-        # Filtro Anno
-        anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
-        anni_opts = ["TOTALE"] + anni_disponibili
-        
-        c_filt, c_void = st.columns([1, 3])
-        sel_anno = c_filt.selectbox("Filtra per Anno:", anni_opts)
-        
-        # Filtraggio
-        if sel_anno != "TOTALE":
-            df_kpi = df[df["Anno"] == sel_anno]
-        else:
-            df_kpi = df
-
-        # --- KPI CARDS (FATTURATO ANNUALE) ---
-        palette = ["#14505f", "#1d6677", "#287d8f"]
-        cols = st.columns(3)
-        settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
-        
-        for i, (nome, col) in enumerate(zip(settori, cols)):
-            d_s = df_kpi[df_kpi["Settore"].astype(str).str.upper() == nome]
-            tot_fatt = d_s['Fatturato'].sum()
-            
-            with col:
-                st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
-                    <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno}</div>
-                    <div style="font-size:24px; color:white; font-weight:bold;">{fmt_euro_it(tot_fatt)}</div>
-                    <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
-                </div>
-                """, unsafe_allow_html=True)
+def render_commessa_form(data=None):
+    """
+    Renderizza il form per creare o modificare una commessa.
+    Se 'data' è un dizionario, il form viene precompilato (Modifica).
+    """
+    # Determina se siamo in modifica o nuovo inserimento
+    is_edit_mode = data is not None and len(data) > 0
+    titolo = f"✏️ MODIFICA COMMESSA: {data.get('Codice', '')}" if is_edit_mode else "➕ NUOVA COMMESSA"
+    
+    # Intestazione con pulsante Indietro
+    c_tit, c_btn = st.columns([3, 1])
+    c_tit.markdown(f"### {titolo}")
+    if c_btn.button("🔙 TORNA ALLA LISTA", use_container_width=True):
+        st.session_state["edit_commessa_data"] = None # Pulisce dati modifica
+        st.rerun()
 
     st.markdown("---")
-    
-    # --- IMPORT / EXPORT ---
-    c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h2 style='text-align: left; margin-top:0;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
-    with c_actions:
-        tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
-        with tab_backup:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Archivio_SISMA')
-            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
-        with tab_import:
-            st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
-            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa", "Fatturato"])
-            buf_tpl = io.BytesIO()
-            with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
-            st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
-            uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
-            if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
-                importa_excel_batch(uploaded_file)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # Inizializza dizionario vuoto se data è None
+    if not data: data = {}
 
-    # --- TABELLA GESTIONALE CON MODIFICA E CANCELLAZIONE ---
-    if not df.empty:
-        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
+    with st.form("frm_commessa"):
+        # --- RIGA 1: Codice e Anno ---
+        c1, c2, c3 = st.columns([1, 1, 2])
+        # IMPORTANTE: Disabilitiamo il Codice se siamo in modifica per garantire che l'update funzioni
+        codice = c1.text_input("Codice Commessa *", value=data.get("Codice", ""), disabled=is_edit_mode)
+        anno = c2.number_input("Anno", value=int(data.get("Anno", date.today().year)), step=1)
+        stato = c3.selectbox("Stato", ["In Corso", "Conclusa", "Preventivo", "Annullata"], index=["In Corso", "Conclusa", "Preventivo", "Annullata"].index(data.get("Stato", "In Corso")))
 
-        # --- PULSANTI AZIONE (Modificati come richiesto) ---
-        c_sel_all, c_deselect, c_modifica, c_space = st.columns([1, 1, 1, 3])
+        # --- RIGA 2: Dettagli Principali ---
+        nom = st.text_input("Oggetto / Nome Commessa *", value=data.get("Nome Commessa", ""))
+        cli = st.text_input("Cliente *", value=data.get("Cliente", ""))
+
+        c4, c5 = st.columns(2)
+        piva = c4.text_input("P.IVA / C.F.", value=data.get("P_IVA", ""))
+        sede = c5.text_input("Sede Legale", value=data.get("Sede", ""))
+
+        # --- RIGA 3: Referenti e Settore ---
+        c6, c7, c8 = st.columns(3)
+        ref = c6.text_input("Referente", value=data.get("Referente", ""))
+        tel = c7.text_input("Telefono", value=data.get("Tel Referente", ""))
+        email = c8.text_input("Email", value=data.get("Email", "")) # Aggiunto se presente nel DB
+
+        c9, c10, c11 = st.columns(3)
+        pm = c9.text_input("Project Manager (PM)", value=data.get("PM", ""))
+        # Se SOCI_OPZIONI non è definita globalmente, usa una lista statica o definiscila all'inizio
+        soci_list = [""] + (SOCI_OPZIONI if 'SOCI_OPZIONI' in globals() else ["Socio A", "Socio B"])
         
-        if c_sel_all.button("Seleziona Tutto", use_container_width=True):
-            st.session_state["select_all_state"] = True
-            st.rerun()
-            
-        if c_deselect.button("Deseleziona", use_container_width=True):
-            st.session_state["select_all_state"] = False
-            st.rerun()
-
-        # Tasto Modifica
-        req_modifica = c_modifica.button("Modifica", use_container_width=True)
-
-        # Prep DF
-        df_to_edit = df.copy()
-        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
-
-        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
-        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
-
-        edited_df = st.data_editor(
-            df_to_edit[actual_cols],
-            column_config={
-                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
-                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-                "Fatturato": st.column_config.NumberColumn(format="€ %.2f"),
-            },
-            disabled=[c for c in actual_cols if c != "Seleziona"],
-            use_container_width=True,
-            hide_index=True,
-            height=500,
-            key="archive_editor"
-        )
-
-        # Filtra le righe selezionate
-        rows_selected = edited_df[edited_df["Seleziona"] == True]
+        idx_port = soci_list.index(data.get("Portatore")) if data.get("Portatore") in soci_list else 0
+        port = c10.selectbox("Portatore", soci_list, index=idx_port)
         
-        # --- LOGICA DEL PULSANTE MODIFICA ---
-        if req_modifica:
-            if rows_selected.empty:
-                st.warning("⚠️ Seleziona una commessa dalla tabella per modificarla.")
-            elif len(rows_selected) > 1:
-                st.warning("⚠️ Seleziona solo una commessa alla volta per la modifica.")
+        sett_opts = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
+        idx_sett = sett_opts.index(data.get("Settore")) if data.get("Settore") in sett_opts else 3
+        sett = c11.selectbox("Settore", sett_opts, index=idx_sett)
+
+        st.markdown("#### 💶 Dati Economici")
+        ce1, ce2 = st.columns(2)
+        tot_comm = ce1.number_input("Totale Commessa (€)", value=float(data.get("Totale Commessa", 0.0)), step=100.0)
+        fatturato = ce2.number_input("Già Fatturato (€)", value=float(data.get("Fatturato", 0.0)), step=100.0)
+
+        # Recuperiamo il JSON nascosto (per incassi/spese) per non perderlo durante il salvataggio
+        json_hidden = data.get("Dati_JSON", "{}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- PULSANTE DI SALVATAGGIO ---
+        if st.form_submit_button("💾 SALVA COMMESSA", type="primary", use_container_width=True):
+            if not codice or not nom or not cli:
+                st.error("⚠️ Campi obbligatori mancanti: Codice, Nome Commessa o Cliente.")
             else:
-                # Recupera il codice dalla selezione
-                cod_sel = rows_selected.iloc[0]["Codice"]
-                # Recupera il record completo dal DF originale (per avere anche colonne nascoste)
-                record_completo = df[df["Codice"].astype(str) == str(cod_sel)].iloc[0].to_dict()
-                # Apre il form di modifica
-                render_commessa_form(record_completo)
-                return # Interrompe l'esecuzione della dashboard per mostrare il form
+                # Creazione record
+                rec = {
+                    "Codice": codice,
+                    "Anno": anno,
+                    "Stato": stato,
+                    "Nome Commessa": nom,
+                    "Cliente": cli,
+                    "P_IVA": piva,
+                    "Sede": sede,
+                    "Referente": ref,
+                    "Tel Referente": tel,
+                    "Email": email,
+                    "PM": pm,
+                    "Portatore": port,
+                    "Settore": sett,
+                    "Totale Commessa": tot_comm,
+                    "Fatturato": fatturato,
+                    "Data Inserimento": data.get("Data Inserimento", str(date.today())),
+                    "Dati_JSON": json_hidden  # Manteniamo i dati tecnici esistenti
+                }
 
-        # --- LOGICA DEL PULSANTE ELIMINA ( appare solo se ci sono selezioni) ---
-        if not rows_selected.empty:
-            st.markdown("---")
-            st.warning(f"⚠️ Hai selezionato {len(rows_selected)} commesse.")
-            col_del_btn, col_del_info = st.columns([1, 3])
-            
-            if col_del_btn.button(f"🗑️ ELIMINA {len(rows_selected)} COMMESSE", type="primary"):
-                codici_da_eliminare = rows_selected["Codice"].tolist()
-                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+                # LOGICA DI SALVATAGGIO CORRETTA
+                # Se è modifica -> update, altrimenti -> new
+                modo_salvataggio = "update" if is_edit_mode else "new"
+                
+                salva_record(rec, "Foglio1", "Codice", mode=modo_salvataggio)
+                
+                # Feedback e Ritorno
+                st.balloons()
+                time.sleep(1)
+                # Resetta lo stato per tornare alla dashboard pulita
+                st.session_state["edit_commessa_data"] = None
+                st.rerun()
 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1100,6 +1071,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
