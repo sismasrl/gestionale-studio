@@ -877,88 +877,76 @@ def render_clienti_page():
                  pass
 
 # --- 5. DASHBOARD & IMPORT ---
+# --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
-    # Ricarica i dati forzando la lettura fresca
+    # Forziamo il ricaricamento dei dati per essere sicuri che siano freschi
     df = carica_dati("Foglio1")
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
     
     if df.empty: 
-        st.info("Nessun dato presente in archivio.")
+        st.info("Nessun dato in archivio.")
         return
 
-    # --- FUNZIONI DI SUPPORTO ROBUSTE ---
-    
-    def clean_number(val):
+    # --- FUNZIONE DI CALCOLO SUPER-ROBUSTA ---
+    def calcola_fatturato_reale(row):
         """
-        Trasforma qualsiasi cosa (stringa euro, stringa con virgole, float, int) in float puro.
-        Es: "€ 1.000,00" -> 1000.0
-        Es: "1.200,50" -> 1200.5
+        Analizza il JSON riga per riga. 
+        Ignora errori di formattazione, spazi vuoti e maiuscole.
         """
-        if pd.isna(val) or str(val).strip() == "":
-            return 0.0
-        if isinstance(val, (int, float)):
-            return float(val)
+        totale_riga = 0.0
         
-        # È una stringa: pulizia aggressiva
-        s = str(val).replace("€", "").replace(" ", "").strip()
-        
-        try:
-            # Algoritmo Euristico:
-            # Se c'è sia punto che virgola (es: 1.000,00), la virgola è il decimale
-            if "." in s and "," in s:
-                s = s.replace(".", "").replace(",", ".")
-            # Se c'è solo la virgola (es: 500,50), la virgola è il decimale
-            elif "," in s:
-                s = s.replace(",", ".")
-            # Se c'è solo il punto, python lo gestisce standard
-            return float(s)
-        except:
-            return 0.0
+        # 1. Verifica se esiste il JSON
+        raw_json = row.get("Dati_JSON", "")
+        if pd.isna(raw_json) or str(raw_json).strip() == "":
+            # Se manca il JSON, proviamo a leggere la colonna vecchia come fallback
+            try:
+                val = str(row.get("Fatturato", "0")).replace("€", "").replace(".", "").replace(",", ".")
+                return float(val)
+            except:
+                return 0.0
 
-    def get_fatturato_live_robust(row):
-        """
-        Estrae il totale fatturato leggendo il JSON interno.
-        Se fallisce, usa la colonna Fatturato standard.
-        """
-        valore_json = 0.0
-        found_json = False
-        
-        # 1. Tentativo da JSON (Prioritario)
+        # 2. Parsing JSON
         try:
-            raw_json = row.get("Dati_JSON", "")
-            if pd.notna(raw_json) and str(raw_json).strip() != "":
-                dati = json.loads(str(raw_json))
-                incassi = dati.get("incassi", [])
+            dati = json.loads(str(raw_json))
+            incassi = dati.get("incassi", [])
+            
+            for inc in incassi:
+                # A. Controllo Stato (Case insensitive e strip spazi)
+                stato = str(inc.get("Stato", "")).lower().strip()
                 
-                # Somma solo le righe con Stato == "Fatturato"
-                for inc in incassi:
-                    if inc.get("Stato") == "Fatturato":
-                        # Qui sta il trucco: puliamo il valore anche dentro il JSON
-                        raw_amount = inc.get("Importo netto €", 0)
-                        valore_json += clean_number(raw_amount)
-                found_json = True
+                if "fatturato" in stato:
+                    # B. Estrazione Importo (Gestisce "Importo netto €" o varianti)
+                    raw_importo = inc.get("Importo netto €", 0)
+                    
+                    # C. Pulizia Numero (Trasforma "€ 1.000,00" o "1.000,00" in 1000.00)
+                    str_importo = str(raw_importo).replace("€", "").strip()
+                    
+                    if "," in str_importo and "." in str_importo:
+                        # Formato 1.000,00 -> togli punto, cambia virgola
+                        str_importo = str_importo.replace(".", "").replace(",", ".")
+                    elif "," in str_importo:
+                        # Formato 1000,00 -> cambia virgola
+                        str_importo = str_importo.replace(",", ".")
+                    
+                    try:
+                        totale_riga += float(str_importo)
+                    except:
+                        pass # Se non è convertibile, ignora
+                        
         except Exception as e:
-            # Se il JSON è corrotto, ignoriamo l'errore
-            pass
+            return 0.0
+            
+        return totale_riga
 
-        # 2. Se abbiamo trovato dati nel JSON, usiamo quelli.
-        # Altrimenti usiamo la colonna "Fatturato" dell'Excel come backup
-        if found_json:
-            return valore_json
-        else:
-            return clean_number(row.get("Fatturato", 0))
-
-    # --- APPLICAZIONE CALCOLI ---
-    
-    # 1. Normalizziamo l'Anno (gestisce errori di conversione)
+    # --- APPLICAZIONE ---
+    # Convertiamo l'anno in numero sicuro
     df["Anno_Int"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
     
-    # 2. Calcoliamo il FATTURATO REALE riga per riga
-    df["Fatturato_Reale"] = df.apply(get_fatturato_live_robust, axis=1)
+    # CALCOLO FONDAMENTALE: Applica la funzione sopra a ogni riga
+    df["Fatturato_Reale"] = df.apply(calcola_fatturato_reale, axis=1)
 
-    # --- FILTRI INTERATTIVI ---
-    
+    # --- FILTRI ---
     anni_disponibili = sorted(df["Anno_Int"].unique().tolist(), reverse=True)
     if 0 in anni_disponibili: anni_disponibili.remove(0)
     anni_opts = ["TOTALE"] + [str(x) for x in anni_disponibili]
@@ -966,109 +954,96 @@ def render_dashboard():
     c_filt, c_void = st.columns([1, 3])
     sel_anno_str = c_filt.selectbox("Filtra per Anno:", anni_opts)
     
-    # Filtraggio DataFrame
     if sel_anno_str != "TOTALE":
         df_kpi = df[df["Anno_Int"] == int(sel_anno_str)].copy()
     else:
         df_kpi = df.copy()
 
-    # --- VISUALIZZAZIONE KPI ---
-    
+    # --- KPI CARDS ---
     palette = ["#14505f", "#1d6677", "#287d8f"]
-    settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
     cols = st.columns(3)
-
-    # Normalizzazione settore per confronto sicuro (tutto maiuscolo, niente spazi)
+    settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
+    
+    # Normalizza colonna settore
     df_kpi["Settore_Norm"] = df_kpi["Settore"].astype(str).str.upper().str.strip()
 
-    for i, (nome_settore, col) in enumerate(zip(settori, cols)):
-        # Filtra per settore
-        d_s = df_kpi[df_kpi["Settore_Norm"] == nome_settore]
+    for i, (nome, col) in enumerate(zip(settori, cols)):
+        d_s = df_kpi[df_kpi["Settore_Norm"] == nome]
         
-        # Somma della colonna calcolata
+        # SOMMA TOTALE BASATA SUL CALCOLO REALE
         tot_fatt = d_s['Fatturato_Reale'].sum()
         
         with col:
-            # FORMATTAZIONE ITALIANA: 1.250,50
+            # FORMATTAZIONE ITALIANA PERFETTA (1.000,00)
             val_fmt = f"{tot_fatt:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
             st.markdown(f"""
-            <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
-                <div style="color:#FFF; font-weight:bold; margin-bottom:5px; font-size:16px;">{nome_settore}</div>
-                <div style="font-size:11px; color:#ccece6; text-transform:uppercase; letter-spacing:1px;">FATTURATO {sel_anno_str}</div>
-                <div style="font-size:26px; color:white; font-weight:bold; margin: 5px 0;">€ {val_fmt}</div>
+            <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
+                <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno_str}</div>
+                <div style="font-size:26px; color:white; font-weight:bold; margin: 10px 0;">€ {val_fmt}</div>
                 <div style="font-size:12px; color:#ccece6;">{len(d_s)} Commesse</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # --- STRUMENTO DI DEBUG (UTILE SE NON FUNZIONA ANCORA) ---
-    with st.expander("🔍 DEBUG DATI (Se vedi 0 controlla qui)"):
-        st.write("Ecco i primi 5 record come vengono letti dal sistema:")
-        debug_df = df_kpi[["Codice", "Nome Commessa", "Settore", "Fatturato", "Fatturato_Reale"]].head(10)
-        st.dataframe(debug_df)
+    # --- STRUMENTO DIAGNOSTICO (Se vedi 0, apri qui) ---
+    with st.expander("🛠️ DIAGNOSTICA CALCOLI (Clicca qui se i totali non tornano)"):
+        st.write("Qui sotto vedi come il sistema sta leggendo i tuoi dati. Se 'Fatturato_Reale' è 0, il JSON non contiene incassi con stato 'Fatturato'.")
+        # Mostra le colonne chiave
+        st.dataframe(df_kpi[["Codice", "Nome Commessa", "Settore", "Fatturato_Reale", "Dati_JSON"]].head(10))
 
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
     
-    # --- SELETTORE MODIFICA SINGOLA ---
+    # --- MODIFICA E TABELLA ---
     if not df.empty:
-        opts = []
-        for _, row in df.iterrows():
-             nome_show = str(row["Nome Commessa"])
-             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
-             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
+        # Selettore Modifica
+        opts = [f"{row['Codice']} | {row['Nome Commessa']}" for _, row in df.iterrows()]
         sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
         if sel:
             cod = sel.split(" | ")[0]
             render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
             return
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # --- TABELLA EDITABILE ---
-    if not df.empty:
+        # Tabella Gestione
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
-
-        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
-        if c_sel_all.button("Seleziona Tutto"):
+        
+        c1, c2, c3 = st.columns([1,1,4])
+        if c1.button("Seleziona Tutto"):
             st.session_state["select_all_state"] = True
             st.rerun()
-        if c_deselect.button("Deseleziona"):
+        if c2.button("Deseleziona"):
             st.session_state["select_all_state"] = False
             st.rerun()
 
-        df_to_edit = df.copy()
-        df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+        df_view = df.copy()
+        df_view.insert(0, "Seleziona", st.session_state["select_all_state"])
+        
+        # Mostriamo all'utente il valore calcolato
+        df_view["Fatturato"] = df_view["Fatturato_Reale"]
 
-        # Mostriamo il 'Fatturato_Reale' calcolato invece di quello statico
-        cols_to_show = ["Seleziona", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato_Reale"]
+        col_cfg = {
+            "Seleziona": st.column_config.CheckboxColumn(default=False),
+            "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
+            "Fatturato": st.column_config.NumberColumn(label="Fatturato (Reale)", format="€ %.2f")
+        }
         
-        # Rinominiamo Fatturato_Reale in Fatturato per l'utente
-        df_to_edit = df_to_edit.rename(columns={"Fatturato_Reale": "Fatturato"})
-        
-        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns] or [c for c in ["Seleziona", "Codice", "Fatturato"] if c in df_to_edit.columns]
+        cols_show = ["Seleziona", "Codice", "Cliente", "Nome Commessa", "Settore", "Totale Commessa", "Fatturato"]
+        cols_show = [c for c in cols_show if c in df_view.columns]
 
         edited_df = st.data_editor(
-            df_to_edit[actual_cols],
-            column_config={
-                "Seleziona": st.column_config.CheckboxColumn("Seleziona", default=False),
-                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
-                "Fatturato": st.column_config.NumberColumn("Fatturato (Calcolato)", format="€ %.2f", disabled=True),
-            },
-            disabled=[c for c in actual_cols if c != "Seleziona"],
+            df_view[cols_show], 
+            column_config=col_cfg, 
+            hide_index=True, 
             use_container_width=True,
-            hide_index=True,
-            height=500,
-            key="archive_editor"
+            key="main_editor"
         )
-
-        rows_to_delete = edited_df[edited_df["Seleziona"] == True]
         
-        if not rows_to_delete.empty:
-            st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} commesse per l'eliminazione.")
-            if st.button(f"🗑️ ELIMINA {len(rows_to_delete)} COMMESSE", type="primary"):
-                codici_da_eliminare = rows_to_delete["Codice"].tolist()
-                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+        # Logica eliminazione
+        rows_del = edited_df[edited_df["Seleziona"] == True]
+        if not rows_del.empty:
+            if st.button(f"🗑️ ELIMINA {len(rows_del)} ELEMENTI", type="primary"):
+                elimina_record_batch(rows_del["Codice"].tolist(), "Foglio1", "Codice")
                 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1250,6 +1225,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
