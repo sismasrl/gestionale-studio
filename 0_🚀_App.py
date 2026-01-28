@@ -298,7 +298,7 @@ def importa_excel_batch(uploaded_file):
             else: st.error("❌ Nessun dato valido trovato.")
     except Exception as e: st.error(f"Errore Import: {e}")
 
-# --- 3. FORM COMMESSA (AGGIORNATO CON FORMATO SLASH) ---
+# --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
 def render_commessa_form(data=None):
     is_edit = data is not None
     
@@ -392,15 +392,17 @@ def render_commessa_form(data=None):
             codice_display = val_codice_originale
             
             if is_edit and val_codice_originale:
-                # Splitta sia se c'è / sia se c'è -
+                # Splitta sia se c'è / sia se c'è - per gestire vecchi formati e nuovi
                 parts = re.split(r'[-/]', val_codice_originale)
                 
-                # Caso standard: PREFISSO / ANNO - NUMERO
+                # Caso standard: PREFISSO / ANNO - NUMERO (almeno 3 parti)
                 if len(parts) >= 3:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    # FORMATO CORRETTO QUI: Slash dopo prefisso, trattino prima del numero
+                    # Ricostruzione precisa: PREFISSO + / + ANNO + - + NUMERO
+                    # parts[1] è l'anno, parts[2] (o l'ultimo) è il numero
                     codice_display = f"{nuovo_prefisso}/{parts[1]}-{parts[2]}"
                 
+                # Caso fallback (codici vecchi tipo RIL-001 o formati strani)
                 elif len(parts) >= 2:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
                     codice_display = f"{nuovo_prefisso}/{parts[-1]}"
@@ -613,7 +615,8 @@ def render_commessa_form(data=None):
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>€ {val_utili:,.2f}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    # --- SALVATAGGIO CON FIX DUPLICATI ---
+    
+    # --- SALVATAGGIO: LOGICA CORRECTA (SALVA NUOVO -> POI CANCELLA VECCHIO) ---
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
@@ -637,17 +640,6 @@ def render_commessa_form(data=None):
             tot_uscite = val_portatore + val_societa + sum_soci + sum_collab + sum_spese
             utile_netto = tot_net - tot_uscite
 
-            # GESTIONE DUPLICATI / CAMBIO CODICE
-            mode_save = "update"
-            if is_edit:
-                if codice_finale != val_codice_originale:
-                    elimina_record(val_codice_originale, "Foglio1", "Codice")
-                    mode_save = "new" 
-                else:
-                    mode_save = "update"
-            else:
-                mode_save = "new"
-
             rec = {
                 "Codice": codice_finale, "Anno": anno, "Nome Commessa": nome_commessa, "Cliente": nome_cliente_finale,
                 "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Tel Referente": tel_ref,
@@ -656,14 +648,35 @@ def render_commessa_form(data=None):
                 "Portatore_Val": val_portatore, "Costi Società": val_societa, "Utile Netto": utile_netto,
                 "Data Inserimento": str(date.today()), "Dati_JSON": json_data
             }
-            salva_record(rec, "Foglio1", "Codice", mode_save)
-            
-            if is_edit: st.rerun()
+
+            # -----------------------------------------------------------
+            # FIX LOGICA SALVATAGGIO:
+            # -----------------------------------------------------------
+            if is_edit and codice_finale != val_codice_originale:
+                # 1. CASO: IL CODICE E' CAMBIATO (es. da RIL a ARC)
+                # Prima SALVIAMO il nuovo record per essere sicuri che i dati esistano
+                salva_record(rec, "Foglio1", "Codice", mode="new")
+                
+                # Poi CANCELLIAMO il vecchio record
+                elimina_record(val_codice_originale, "Foglio1", "Codice")
+                
+                # Infine ricarichiamo (utile se elimina_record non lo fa da solo)
+                st.success(f"Commessa aggiornata da {val_codice_originale} a {codice_finale}")
+                time.sleep(1)
+                st.rerun()
+
+            else:
+                # 2. CASO: UPDATE NORMALE O NUOVA COMMESSA
+                mode_save = "update" if is_edit else "new"
+                salva_record(rec, "Foglio1", "Codice", mode=mode_save)
+                
+                if is_edit: 
+                    st.success("Commessa aggiornata!")
+                    st.rerun()
 
     if is_edit:
         with st.expander("⚠️ ZONA PERICOLO"):
             if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): elimina_record(codice_finale, "Foglio1", "Codice")
-
 # --- 4. CLIENTI PAGE (DEFINIZIONE FUNZIONE) ---
 def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
@@ -1201,6 +1214,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
