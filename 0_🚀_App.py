@@ -940,10 +940,11 @@ def render_dashboard():
             totale_settore = d_s['_Fatturato_Calc_Interno'].sum()
             with col:
                 val_fmt = f"{totale_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                # --- MODIFICA QUI: Aggiunto NETTO dopo FATTURATO ---
                 st.markdown(f"""
                 <div style="background-color:{palette[i]}; padding:20px; border:1px solid #ddd; border-radius:4px; text-align:center;">
                     <div style="color:#FFF; font-weight:bold; margin-bottom:5px;">{nome}</div>
-                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO {sel_anno_str}</div>
+                    <div style="font-size:12px; color:#ccece6; text-transform:uppercase;">FATTURATO NETTO {sel_anno_str}</div>
                     <div style="font-size:24px; color:white; font-weight:bold;">€ {val_fmt}</div>
                     <div style="font-size:12px; color:#ccece6; margin-top:5px;">{len(d_s)} Commesse</div>
                 </div>
@@ -1214,6 +1215,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
