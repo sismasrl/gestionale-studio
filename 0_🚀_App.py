@@ -1053,13 +1053,12 @@ def render_dashboard():
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
-    # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT) ---
-    # Serve solo per fare le somme dei KPI. Pulisce tutto.
+    # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT puro) ---
     def pulisci_per_calcoli(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
         
-        # Se è già float/int, ottimo
+        # Se è già numero, converti in float e basta
         if isinstance(val, (float, int)):
             return float(val)
             
@@ -1068,38 +1067,46 @@ def render_dashboard():
         s = s.replace("€", "").strip()
         
         try:
-            # GESTIONE FORMATI MISTI
-            # Se c'è sia punto che virgola (es. 1.628,64), assumiamo IT -> convertiamo in US
-            if "." in s and "," in s:
-                s = s.replace(".", "")   # Rimuovi separatore migliaia
-                s = s.replace(",", ".")  # Virgola diventa punto decimale
+            # Rimuovi eventuali spazi interni (es. "1 000")
+            s = s.replace(" ", "")
             
-            # Se c'è solo la virgola (es. 1628,64) -> diventa 1628.64
+            # GESTIONE FORMATI MISTI
+            # Caso 1: Formato Italiano (1.234,56) -> Ci sono sia punti che virgole
+            if "." in s and "," in s:
+                s = s.replace(".", "")   # Via i punti delle migliaia
+                s = s.replace(",", ".")  # La virgola diventa il punto decimale Python
+            
+            # Caso 2: Solo virgola (1234,56) -> Diventa 1234.56
             elif "," in s:
                 s = s.replace(",", ".")
             
-            # Se c'è solo il punto, potrebbe essere 1.628 (mille) o 1628.64 (US)
-            # Nel dubbio, se ha 3 decimali è migliaia, se ne ha 2 è US. 
-            # Ma per sicurezza rimuoviamo i punti se sembrano migliaia visive
+            # Caso 3: Solo punto (1.234 o 1234.56)
+            # Qui si rischia confusione. Assumiamo che se ci sono 3 cifre dopo il punto sia migliaia (1.000), 
+            # altrimenti decimale (123.45). Ma per sicurezza, se stiamo parlando di soldi,
+            # spesso i punti sono solo separatori visivi in input manuali italiani.
             elif "." in s:
                 parts = s.split(".")
-                if len(parts) > 1 and len(parts[-1]) != 2: # Es. 1.000
+                # Se l'ultima parte ha lunghezza diversa da 2, probabilmente era un separatore migliaia (es 1.000)
+                # NOTA: Questa è una stima euristica.
+                if len(parts) > 1 and len(parts[-1]) != 2: 
                      s = s.replace(".", "")
             
             return float(s)
         except:
             return 0.0
 
-    # --- 2. FUNZIONE PER LA VISUALIZZAZIONE (Restituisce una STRINGA) ---
-    # Questa "blinda" il dato. Prende il float e costruisce la stringa a mano.
+    # --- 2. FUNZIONE VISIVA BLINDATA (Stringa Fissa "€ X.XXX,XX") ---
     def forza_testo_visivo(val):
+        # 1. Ottieni il numero puro
         val_float = pulisci_per_calcoli(val)
         
-        # Formatta in standard US (1,234.56)
+        # 2. Formatta in stile USA forzando ESATTAMENTE 2 decimali (.2f)
+        # Es. 1500 -> "1,500.00"
+        # Es. 1500.5 -> "1,500.50"
         base = "{:,.2f}".format(val_float)
         
-        # Inversione manuale caratteri per l'Italiano
-        # 1,234.56 -> 1X234.56 -> 1X234,56 -> 1.234,56
+        # 3. Inverti i separatori per lo stile Italiano
+        # "1,500.00" -> "1.500,00"
         finale = base.replace(",", "X").replace(".", ",").replace("X", ".")
         
         return f"€ {finale}"
@@ -1142,14 +1149,12 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI (Usa la funzione float pulita) ---
+        # --- CALCOLI KPI ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
-            
             raw_json = row.get("Dati_JSON", "")
-            if pd.isna(raw_json) or str(raw_json).strip() == "": 
-                return pd.Series([0.0, 0.0])
+            if pd.isna(raw_json) or str(raw_json).strip() == "": return pd.Series([0.0, 0.0])
 
             try:
                 dati = json.loads(str(raw_json))
@@ -1159,18 +1164,14 @@ def render_dashboard():
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
-                                dati_reali = v
-                                break 
-                    
+                                dati_reali = v; break 
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
                         t_netto += pulisci_per_calcoli(dati_reali.get("Importo netto €", 0))
                         t_lordo += pulisci_per_calcoli(dati_reali.get("Importo lordo €", 0))
-            except: 
-                return pd.Series([0.0, 0.0])
+            except: return pd.Series([0.0, 0.0])
             return pd.Series([t_netto, t_lordo])
 
-        # --- PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
@@ -1195,35 +1196,20 @@ def render_dashboard():
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
-            tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
-            tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
+            # Usa la funzione blindata per le card
+            t_n = forza_testo_visivo(d_s['_Fatt_Netto_Calc'].sum()).replace("€ ", "")
+            t_l = forza_testo_visivo(d_s['_Fatt_Lordo_Calc'].sum()).replace("€ ", "")
             
-            # Qui usiamo la funzione VISIVA (Stringa)
-            fmt_netto = forza_testo_visivo(tot_netto_settore).replace("€ ", "")
-            fmt_lordo = forza_testo_visivo(tot_lordo_settore).replace("€ ", "")
-            
-            card_html = f"""
-            <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
-                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
-                    {nome}
-                </div>
-                <div style="display: flex; justify-content: space-around; align-items: center;">
-                    <div style="text-align:center;">
-                        <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
-                        <div style="font-size:20px; font-weight:bold;">€ {fmt_netto}</div>
-                    </div>
-                    <div style="width:1px; height:30px; background-color:rgba(255,255,255,0.3);"></div>
-                    <div style="text-align:center;">
-                        <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
-                        <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
+            with col:
+                st.markdown(f"""
+                <div style="background-color:{palette[i]}; padding:15px; border-radius:6px; text-align:center; color:white;">
+                    <div style="font-weight:bold; font-size:16px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">{nome}</div>
+                    <div style="display:flex; justify-content:space-around; margin-top:10px;">
+                        <div><div style="font-size:10px;">NETTO</div><div style="font-size:18px; font-weight:bold;">€ {t_n}</div></div>
+                        <div><div style="font-size:10px;">LORDO</div><div style="font-size:18px;">€ {t_l}</div></div>
                     </div>
                 </div>
-                <div style="font-size:11px; color:#ccece6; margin-top:10px;">
-                    {len(d_s)} Commesse ({sel_anno_str})
-                </div>
-            </div>
-            """
-            with col: st.markdown(card_html, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
@@ -1280,20 +1266,17 @@ def render_dashboard():
     if not df.empty:
         df_to_edit = df_filtered.copy()
         
-        if "Elimina" not in df_to_edit.columns:
-             df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
-        else:
-             df_to_edit["Elimina"] = st.session_state["select_all_state"]
+        if "Elimina" not in df_to_edit.columns: df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
+        else: df_to_edit["Elimina"] = st.session_state["select_all_state"]
 
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX ASSOLUTO VISIVO ---
+        # --- FIX ASSOLUTO: FORZATURA STRINGA ---
         if "Totale Commessa" in df_to_edit.columns:
-            # 1. Convertiamo in stringa formattata ITALIANA (Es. "€ 1.628,64")
+            # 1. Applico la funzione che genera "€ 1.000,00" (sempre 2 decimali)
             df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(forza_testo_visivo)
-            # 2. IMPORTANTE: Forziamo il tipo colonna Pandas a Stringa (Object)
-            # Se non facciamo questo, Pandas potrebbe tentare di riconvertirlo.
+            # 2. Converto esplicitamente la colonna in Object/Stringa per Pandas
             df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].astype(str)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
@@ -1305,14 +1288,14 @@ def render_dashboard():
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", default=False, width="small"),
                 
-                # TextColumn è la chiave: Streamlit NON toccherà i tuoi punti e virgole
+                # TextColumn: Streamlit mostrerà la stringa ESATTAMENTE come l'abbiamo creata noi
                 "Totale Commessa": st.column_config.TextColumn(
                     "Totale Commessa",
                     help="Importo fisso (Visualizzazione Testo)",
                     width="medium"
                 ), 
             },
-            # Disabilitiamo edit su Totale Commessa perché ora è una stringa complessa
+            # Disabilita modifica su Totale Commessa perché ora è testo complesso
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1507,6 +1490,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
