@@ -1046,79 +1046,63 @@ def render_clienti_page():
                     time.sleep(1)
                     st.rerun()
 
-import re # Assicurati che questo sia importato, serve per la pulizia potente
-
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     # Carica i dati aggiornati
-    # st.cache_data.clear() 
     df = carica_dati("Foglio1")
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
-    # --- FUNZIONE DI CONVERSIONE "NUCLEARE" ---
-    # Questa funzione forza l'interpretazione corretta:
-    # 1.628,64 -> diventa 1628.64 (Float)
-    # Poi lo formatteremo come testo per la visualizzazione
-    def normalizza_importo_aggressiva(val):
+    # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT) ---
+    # Serve solo per fare le somme dei KPI. Pulisce tutto.
+    def pulisci_per_calcoli(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
         
-        # A. Se è già un numero, è facile.
+        # Se è già float/int, ottimo
         if isinstance(val, (float, int)):
             return float(val)
             
         s = str(val).strip()
-        
-        # B. Pulizia caratteri strani (tieni solo numeri, punti, virgole e meno)
-        s_clean = re.sub(r'[^\d,.-]', '', s)
-        
-        # C. LOGICA DI PARSING (Il cuore del fix)
-        # Dobbiamo capire se l'ultimo separatore è un punto o una virgola.
-        
-        # Contiamo cosa c'è
-        count_comma = s_clean.count(',')
-        count_point = s_clean.count('.')
+        # Rimuovi simbolo euro e spazi
+        s = s.replace("€", "").strip()
         
         try:
-            # CASO 1: Formato Italiano classico (es. "1.628,64")
-            # C'è la virgola, e la virgola è DOPO l'ultimo punto (se c'è).
-            if ',' in s_clean:
-                if count_point > 0:
-                     last_point_index = s_clean.rfind('.')
-                     last_comma_index = s_clean.rfind(',')
-                     
-                     if last_comma_index > last_point_index:
-                         # È sicuramente italiano (punto migliaia, virgola decimali)
-                         s_clean = s_clean.replace(".", "")  # Via i punti
-                         s_clean = s_clean.replace(",", ".") # Virgola diventa punto
-                     else:
-                         # Caso strano (es. 1,200.50 stile US), ma raro qui.
-                         s_clean = s_clean.replace(",", "")
-                else:
-                    # C'è SOLO la virgola (es. "1628,64"). È decimale italiano.
-                    s_clean = s_clean.replace(",", ".")
+            # GESTIONE FORMATI MISTI
+            # Se c'è sia punto che virgola (es. 1.628,64), assumiamo IT -> convertiamo in US
+            if "." in s and "," in s:
+                s = s.replace(".", "")   # Rimuovi separatore migliaia
+                s = s.replace(",", ".")  # Virgola diventa punto decimale
             
-            # CASO 2: Solo punti (es. "1.628.64" errore o "1.628")
-            # Se streamliti/excel ha salvato male
-            elif '.' in s_clean:
-                # Se c'è più di un punto (1.000.000), sono migliaia
-                if count_point > 1:
-                    s_clean = s_clean.replace(".", "")
-                else:
-                    # Un solo punto. Potrebbe essere 1628.64 (giusto) o 1.628 (mille)
-                    # Assumiamo sia formato Python standard (giusto)
-                    pass
-
-            return float(s_clean)
+            # Se c'è solo la virgola (es. 1628,64) -> diventa 1628.64
+            elif "," in s:
+                s = s.replace(",", ".")
+            
+            # Se c'è solo il punto, potrebbe essere 1.628 (mille) o 1628.64 (US)
+            # Nel dubbio, se ha 3 decimali è migliaia, se ne ha 2 è US. 
+            # Ma per sicurezza rimuoviamo i punti se sembrano migliaia visive
+            elif "." in s:
+                parts = s.split(".")
+                if len(parts) > 1 and len(parts[-1]) != 2: # Es. 1.000
+                     s = s.replace(".", "")
+            
+            return float(s)
         except:
             return 0.0
 
-    # --- FUNZIONE PER FORMATTAZIONE VISIVA FORZATA ---
-    def formatta_italiano_str(val):
-        f_val = normalizza_importo_aggressiva(val)
-        # Crea stringa "€ 1.628,64"
-        return "€ {:,.2f}".format(f_val).replace(",", "X").replace(".", ",").replace("X", ".")
+    # --- 2. FUNZIONE PER LA VISUALIZZAZIONE (Restituisce una STRINGA) ---
+    # Questa "blinda" il dato. Prende il float e costruisce la stringa a mano.
+    def forza_testo_visivo(val):
+        val_float = pulisci_per_calcoli(val)
+        
+        # Formatta in standard US (1,234.56)
+        base = "{:,.2f}".format(val_float)
+        
+        # Inversione manuale caratteri per l'Italiano
+        # 1,234.56 -> 1X234.56 -> 1X234,56 -> 1.234,56
+        finale = base.replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        return f"€ {finale}"
 
     # --- GESTIONE STATO MODIFICA ---
     if "edit_codice_commessa" not in st.session_state:
@@ -1158,7 +1142,7 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI ---
+        # --- 1. CALCOLO DATI KPI (Usa la funzione float pulita) ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
@@ -1180,17 +1164,17 @@ def render_dashboard():
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
-                        t_netto += normalizza_importo_aggressiva(dati_reali.get("Importo netto €", 0))
-                        t_lordo += normalizza_importo_aggressiva(dati_reali.get("Importo lordo €", 0))
+                        t_netto += pulisci_per_calcoli(dati_reali.get("Importo netto €", 0))
+                        t_lordo += pulisci_per_calcoli(dati_reali.get("Importo lordo €", 0))
             except: 
                 return pd.Series([0.0, 0.0])
             return pd.Series([t_netto, t_lordo])
 
-        # --- 2. PREPARAZIONE DATI ---
+        # --- PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
-        # --- 3. FILTRI ---
+        # --- FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
         if 0 in anni_disponibili: anni_disponibili.remove(0)
         anni_opts = ["TOTALE"] + [str(x) for x in anni_disponibili]
@@ -1203,7 +1187,7 @@ def render_dashboard():
         else:
             df_filtered = df.copy()
 
-        # --- 4. KPI CARDS ---
+        # --- KPI CARDS ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -1214,9 +1198,9 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Usa la funzione di formattazione stringa per le card
-            fmt_netto = formatta_italiano_str(tot_netto_settore).replace("€ ", "")
-            fmt_lordo = formatta_italiano_str(tot_lordo_settore).replace("€ ", "")
+            # Qui usiamo la funzione VISIVA (Stringa)
+            fmt_netto = forza_testo_visivo(tot_netto_settore).replace("€ ", "")
+            fmt_lordo = forza_testo_visivo(tot_lordo_settore).replace("€ ", "")
             
             card_html = f"""
             <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
@@ -1304,12 +1288,13 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX ASSOLUTO: Convertiamo TUTTO in TESTO formattato ---
+        # --- FIX ASSOLUTO VISIVO ---
         if "Totale Commessa" in df_to_edit.columns:
-            # 1. Applichiamo la formattazione stringa DIRETTAMENTE sui dati
-            # Questo trasforma 1628.64 -> "€ 1.628,64"
-            # Streamlit non potrà più sbagliarsi perché leggerà una stringa, non un numero.
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(formatta_italiano_str)
+            # 1. Convertiamo in stringa formattata ITALIANA (Es. "€ 1.628,64")
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(forza_testo_visivo)
+            # 2. IMPORTANTE: Forziamo il tipo colonna Pandas a Stringa (Object)
+            # Se non facciamo questo, Pandas potrebbe tentare di riconvertirlo.
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].astype(str)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
@@ -1318,17 +1303,16 @@ def render_dashboard():
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
-                "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
+                "Elimina": st.column_config.CheckboxColumn("❌ Elimina", default=False, width="small"),
                 
-                # USIAMO TextColumn: Streamlit mostrerà ESATTAMENTE la stringa che abbiamo creato noi.
-                # Nessuna interpretazione automatica.
+                # TextColumn è la chiave: Streamlit NON toccherà i tuoi punti e virgole
                 "Totale Commessa": st.column_config.TextColumn(
                     "Totale Commessa",
-                    help="Importo totale (Formato Italiano Fisso)",
-                    width="small"
+                    help="Importo fisso (Visualizzazione Testo)",
+                    width="medium"
                 ), 
             },
-            # Disabilitiamo l'editing della colonna totale perché ora è testo
+            # Disabilitiamo edit su Totale Commessa perché ora è una stringa complessa
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1523,6 +1507,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
