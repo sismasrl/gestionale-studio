@@ -878,6 +878,56 @@ def render_dashboard():
     df = carica_dati("Foglio1")
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
     
+    # --- GESTIONE STATO MODIFICA (Session State) ---
+    # Inizializziamo la variabile che tiene traccia di quale commessa stiamo modificando
+    if "edit_codice_commessa" not in st.session_state:
+        st.session_state["edit_codice_commessa"] = None
+
+    # Callback per gestire la selezione dalla tendina
+    def attiva_modifica():
+        selezione = st.session_state.get("trigger_selezione_commessa")
+        if selezione:
+            # Estrae il codice e lo salva nello stato
+            st.session_state["edit_codice_commessa"] = selezione.split(" | ")[0]
+            # Resetta la selectbox visualmente per la prossima volta
+            st.session_state["trigger_selezione_commessa"] = ""
+
+    # Se stiamo MODIFICANDO, mostriamo SOLO il form
+    if st.session_state["edit_codice_commessa"] is not None:
+        codice_corrente = st.session_state["edit_codice_commessa"]
+        
+        # Recupera i dati del record corrente
+        record_corrente = df[df["Codice"].astype(str) == str(codice_corrente)]
+        
+        if not record_corrente.empty:
+            dati_commessa = record_corrente.iloc[0].to_dict()
+            
+            # Renderizza il form.
+            # NOTA: Se render_commessa_form restituisce True (dopo un salvataggio), chiudiamo.
+            esito_salvataggio = render_commessa_form(dati_commessa)
+            
+            # Se la funzione ritorna True (Salvataggio OK) o se l'utente clicca Annulla
+            c_chiudi, c_nulla = st.columns([1, 4])
+            if esito_salvataggio == True:
+                st.success("Salvataggio rilevato, chiusura in corso...")
+                st.session_state["edit_codice_commessa"] = None
+                st.rerun()
+            
+            # Pulsante manuale per uscire se render_commessa_form non restituisce valori
+            st.markdown("---")
+            if st.button("🔙 CHIUDI E TORNA ALLA DASHBOARD", key="btn_close_edit"):
+                st.session_state["edit_codice_commessa"] = None
+                st.rerun()
+        else:
+            st.error("Errore: Commessa non trovata.")
+            if st.button("Torna indietro"):
+                st.session_state["edit_codice_commessa"] = None
+                st.rerun()
+        
+        # Interrompiamo l'esecuzione qui per nascondere il resto della dashboard durante la modifica
+        return
+
+    # --- VISUALIZZAZIONE NORMALE (Se non stiamo modificando) ---
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
@@ -985,13 +1035,18 @@ def render_dashboard():
              cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
              opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
         
-        st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto (NON dalla tabella in basso).")
-        sel = st.selectbox("Seleziona per Modifica:", [""] + opts)
+        st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto.")
         
-        if sel:
-            cod = sel.split(" | ")[0]
-            render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
-            return
+        # Selectbox con Callback per gestire l'apertura
+        st.selectbox(
+            "Seleziona per Modifica:", 
+            options=[""] + opts,
+            key="trigger_selezione_commessa", # Chiave per session_state
+            on_change=attiva_modifica        # Funzione chiamata al cambio valore
+        )
+        
+        # Nota: La logica di visualizzazione form è stata spostata all'inizio della funzione
+        # per coprire l'intera dashboard quando attiva.
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -1004,7 +1059,6 @@ def render_dashboard():
     # Colonna Sinistra: Titolo e Pulsanti Selezione
     with c_title: 
         st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
-        # Pulsanti posizionati qui per avvicinarli al titolo
         if not df.empty:
             c_btn1, c_btn2, c_rest = st.columns([0.4, 0.4, 0.2])
             with c_btn1:
@@ -1247,6 +1301,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
