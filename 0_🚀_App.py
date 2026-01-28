@@ -886,7 +886,6 @@ def render_dashboard():
             t_netto = 0.0
             t_lordo = 0.0
             
-            # Helper interno per pulire la valuta
             def pulisci_valuta(valore_raw):
                 if not valore_raw: return 0.0
                 s = str(valore_raw).replace("€", "").strip()
@@ -904,7 +903,6 @@ def render_dashboard():
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     dati_reali = item
-                    # Navigazione strutture annidate se necessario
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
@@ -912,11 +910,8 @@ def render_dashboard():
                                 break 
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
-                    # LOGICA DI FILTRO: Solo se stato è "Fatturato"
                     if "fatturato" in stato:
-                        # Somma Netto (Importo netto €)
                         t_netto += pulisci_valuta(dati_reali.get("Importo netto €", 0))
-                        # Somma Lordo (Importo lordo € - terza colonna)
                         t_lordo += pulisci_valuta(dati_reali.get("Importo lordo €", 0))
             except: 
                 return pd.Series([0.0, 0.0])
@@ -925,7 +920,6 @@ def render_dashboard():
 
         # --- 2. PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        # Calcoliamo le colonne temporanee
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
         # --- 3. FILTRI ---
@@ -936,13 +930,12 @@ def render_dashboard():
         c_filt, c_void = st.columns([1, 3])
         sel_anno_str = c_filt.selectbox("Filtra Dashboard e Archivio per Anno:", anni_opts)
         
-        # Filtraggio DataFrame
         if sel_anno_str != "TOTALE":
             df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
             df_filtered = df.copy()
 
-        # --- 4. KPI CARDS (HTML CORRETTO) ---
+        # --- 4. KPI CARDS ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -957,8 +950,6 @@ def render_dashboard():
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            # --- FIX VISUALIZZAZIONE HTML ---
-            # Creiamo la stringa HTML in una variabile per evitare errori di indentazione
             card_html = f"""
             <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
                 <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
@@ -980,7 +971,6 @@ def render_dashboard():
                 </div>
             </div>
             """
-            
             with col:
                 st.markdown(card_html, unsafe_allow_html=True)
 
@@ -1000,15 +990,33 @@ def render_dashboard():
         
         if sel:
             cod = sel.split(" | ")[0]
-            # Passiamo i dati al form
             render_commessa_form(df[df["Codice"].astype(str) == cod].iloc[0].to_dict())
             return
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- IMPORT / EXPORT ---
+    # --- GESTIONE STATO SELEZIONE (Definito prima dell'uso) ---
+    if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
+
+    # --- LAYOUT ARCHIVIO E AZIONI ---
     c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
+    
+    # Colonna Sinistra: Titolo e Pulsanti Selezione
+    with c_title: 
+        st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
+        # Pulsanti posizionati qui per avvicinarli al titolo
+        if not df.empty:
+            c_btn1, c_btn2, c_rest = st.columns([0.4, 0.4, 0.2])
+            with c_btn1:
+                if st.button("Seleziona Tutto", use_container_width=True):
+                    st.session_state["select_all_state"] = True
+                    st.rerun()
+            with c_btn2:
+                if st.button("Deseleziona", use_container_width=True):
+                    st.session_state["select_all_state"] = False
+                    st.rerun()
+
+    # Colonna Destra: Import/Export Tabs
     with c_actions:
         tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
         with tab_backup:
@@ -1029,16 +1037,6 @@ def render_dashboard():
 
     # --- TABELLA GESTIONALE ---
     if not df.empty:
-        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
-
-        c_sel_all, c_deselect, c_space = st.columns([0.6, 0.6, 4])
-        if c_sel_all.button("Seleziona Tutto"):
-            st.session_state["select_all_state"] = True
-            st.rerun()
-        if c_deselect.button("Deseleziona"):
-            st.session_state["select_all_state"] = False
-            st.rerun()
-
         df_to_edit = df_filtered.copy()
         df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         
@@ -1249,6 +1247,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
