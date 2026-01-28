@@ -587,25 +587,49 @@ def render_commessa_form(data=None):
     # 04. PIANO ECONOMICO
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
         
-        # --- FUNZIONI DI UTILITÀ PER FORMATTAZIONE E CONVERSIONE ---
-        # 1. Per visualizzare: converte 1000.00 -> "€ 1.000,00"
+        # --- 1. FUNZIONI DI FORMATTAZIONE E PULIZIA ---
+        
+        # Formattazione VISIVA per i box totali (es. 1000.50 -> "€ 1.000,50")
         fmt_euro = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-        # 2. Per calcolare: converte stringhe "1.000,00" (o miste) -> float 1000.00
-        def safe_float(val):
+        # Funzione CRITICA: converte qualsiasi stringa "1.234,56" in float 1234.56
+        def converti_valuta_italiana(val):
             if pd.isna(val) or str(val).strip() == "": return 0.0
-            if isinstance(val, (float, int)): return float(val)
+            
+            # Se è già un numero (float o int), lo teniamo così com'è
+            if isinstance(val, (float, int)):
+                return float(val)
+            
             s = str(val).replace("€", "").strip()
-            # Logica Italiana: rimuovo i punti (migliaia) e sostituisco virgola con punto
-            if "." in s and "," in s: s = s.replace(".", "").replace(",", ".")
-            elif "," in s: s = s.replace(",", ".")
-            # Se ci sono solo punti (es. 1.200 inserito all'inglese), attenzione, ma assumiamo standard IT
-            try: return float(s)
-            except: return 0.0
+            
+            # Caso specifico: se l'utente scrive "1.628,64"
+            # 1. Rimuoviamo i punti delle migliaia (.)
+            # 2. Sostituiamo la virgola dei decimali (,) con il punto standard (.)
+            if "," in s:
+                s = s.replace(".", "")  # Via i separatori migliaia (1.628,64 -> 1628,64)
+                s = s.replace(",", ".") # Virgola diventa punto (1628,64 -> 1628.64)
+            else:
+                # Se non c'è virgola, potrebbe essere "1628" o "1.628" (inglese?)
+                # Assumiamo che se ci sono punti senza virgole in un contesto italiano, siano migliaia.
+                # Ma per sicurezza, se il numero di decimali dopo il punto è strano, stiamo attenti.
+                # Per semplicità in questo contesto: Rimuoviamo il punto se sembra un separatore migliaia.
+                if s.count(".") >= 1:
+                     s = s.replace(".", "") 
+
+            try:
+                return float(s)
+            except:
+                return 0.0
+
+        # --- 2. PREPARAZIONE DATI PRIMA DELL'EDITOR ---
+        # Puliamo preventivamente i dati nel session state per assicurarci che siano float puri
+        # Questo evita che l'editor riceva stringhe ambigue.
+        if "stato_incassi" in st.session_state:
+            st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
-            # Usiamo step=0.01 per forzare il comportamento numerico nell'editor
+            # step=0.01 aiuta l'editor a capire che vogliamo i decimali
             "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
@@ -615,28 +639,51 @@ def render_commessa_form(data=None):
         }
         order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
         
-        # Editor
-        edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
+        # --- 3. EDITOR ---
+        edited_incassi = st.data_editor(
+            st.session_state["stato_incassi"], 
+            num_rows="dynamic", 
+            column_config=col_cfg, 
+            column_order=order_cols, 
+            use_container_width=True, 
+            key="ed_inc"
+        )
         
-        # --- FIX CALCOLO: FORZATURA TIPI FLOAT ---
-        # Puliamo la colonna chiave per evitare errori di somma
+        # --- 4. CALCOLI E SALVATAGGIO ---
         ricalcolo = edited_incassi.copy()
-        ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(safe_float)
         
-        # Ricalcolo matematico del lordo (basato sui float puliti)
+        # Riaplichiamo la conversione in uscita per sicurezza (se l'utente ha incollato testo strano)
+        ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(converti_valuta_italiana)
+        
+        # Calcolo matematico (ora siamo sicuri che siano float corretti)
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
         
-        if not ricalcolo.equals(st.session_state["stato_incassi"]):
+        # Verifica differenze (con tolleranza float per evitare loop infiniti su 0.0000001)
+        # Usiamo .round(2) per confrontare cifre monetarie
+        diff_check = False
+        try:
+            # Confronto manuale sui valori numerici chiave
+            netto_old = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana).round(2)
+            netto_new = ricalcolo["Importo netto €"].round(2)
+            if not netto_old.equals(netto_new) or len(ricalcolo) != len(st.session_state["stato_incassi"]):
+                diff_check = True
+            else:
+                 # Check altre colonne
+                 cols_no_calc = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
+                 if not ricalcolo[cols_no_calc].equals(st.session_state["stato_incassi"][cols_no_calc]):
+                     diff_check = True
+        except:
+            diff_check = True
+
+        if diff_check:
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
-        # Somme sicure sui dati convertiti
-        tot_net = st.session_state["stato_incassi"]["Importo netto €"].sum()
-        tot_lordo = st.session_state["stato_incassi"]["Importo lordo €"].sum()
+        # Somme (sicure perché convertite)
+        tot_net = ricalcolo["Importo netto €"].sum()
+        tot_lordo = ricalcolo["Importo lordo €"].sum()
         
-        # Filtro per fatturato (assicurandoci che i dati siano float)
-        df_fatt = st.session_state["stato_incassi"].copy()
-        df_fatt["Importo netto €"] = df_fatt["Importo netto €"].apply(safe_float)
+        df_fatt = ricalcolo.copy()
         fatturato_netto = df_fatt[df_fatt['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
@@ -647,36 +694,49 @@ def render_commessa_form(data=None):
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
         
+        # Funzione helper per applicare la config comune
+        def get_money_col():
+             return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
+
         st.markdown("### SOCI")
         soci_cfg = {
             "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True),
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
+            "Importo": get_money_col(),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
+        # Applichiamo pulizia preventiva anche qui se necessario
+        if "Importo" in df_soci_def.columns:
+             df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
+             
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
+            "Importo": get_money_col(),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
+        if "Importo" in df_collab_def.columns:
+             df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
+             
         edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
+            "Importo": get_money_col(),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
+        if "Importo" in df_spese_def.columns:
+             df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
+             
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
-        # --- FIX SOMME COSTI ---
-        # Applichiamo safe_float anche qui per garantire somme corrette
-        sum_soci = edited_soci["Importo"].apply(safe_float).sum()
-        sum_collab = edited_collab["Importo"].apply(safe_float).sum()
-        sum_spese = edited_spese["Importo"].apply(safe_float).sum()
+        # Somme con conversione di sicurezza sull'output dell'editor
+        sum_soci = edited_soci["Importo"].apply(converti_valuta_italiana).sum()
+        sum_collab = edited_collab["Importo"].apply(converti_valuta_italiana).sum()
+        sum_spese = edited_spese["Importo"].apply(converti_valuta_italiana).sum()
         
         with top_metrics:
             b1, b2, b3, b4 = st.columns(4)
@@ -1428,6 +1488,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
