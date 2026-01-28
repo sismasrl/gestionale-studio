@@ -1048,8 +1048,7 @@ def render_clienti_page():
 
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
-    # Carica i dati. Se usi @st.cache_data su carica_dati, assicurati che si aggiorni.
-    # In caso di dubbi, forza lo svuotamento cache se necessario (opzionale)
+    # Carica i dati. 
     # st.cache_data.clear() 
     df = carica_dati("Foglio1")
     
@@ -1081,7 +1080,6 @@ def render_dashboard():
             
             # GESTIONE USCITA DOPO SALVATAGGIO
             if esito_salvataggio == True:
-                # Se è stato salvato (e forse rinominato), resettiamo e ricarichiamo
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
             
@@ -1091,16 +1089,11 @@ def render_dashboard():
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
-            # --- FIX FONDAMENTALE ---
-            # Se siamo qui, significa che il codice cercato NON ESISTE PIÙ.
-            # Questo succede legittimamente quando CAMBI SETTORE (il codice cambia da RIL a ARC, etc.)
-            # Invece di dare errore, assumiamo che sia andato tutto bene e torniamo alla lista.
             st.warning(f"⚠️ Aggiornamento completato (Codice modificato o Record eliminato). Torno alla lista...")
-            time.sleep(1.5) # Un attimo di pausa per far leggere l'avviso
+            time.sleep(1.5)
             st.session_state["edit_codice_commessa"] = None
             st.rerun()
         
-        # Interrompiamo l'esecuzione qui per nascondere il resto della dashboard durante la modifica
         return
 
     # --- VISUALIZZAZIONE NORMALE (Se non stiamo modificando) ---
@@ -1250,7 +1243,6 @@ def render_dashboard():
     if not df.empty:
         df_to_edit = df_filtered.copy()
         
-        # Correzione logica selezione: aggiungiamo la colonna Elimina basata sullo stato
         if "Elimina" not in df_to_edit.columns:
              df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         else:
@@ -1260,29 +1252,28 @@ def render_dashboard():
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
         # --- FIX IMPORTI ARCHIVIO ---
-        # Questa funzione converte qualsiasi formato in ingresso (es. "€ 1.230,64" o float)
-        # e restituisce la stringa formattata corretta per la visualizzazione.
-        def pulisci_e_formatta_euro(val):
-            if pd.isna(val) or str(val).strip() == "": 
-                f_val = 0.0
-            else:
-                # Pulizia: Rimuovi simbolo € e spazi
-                s = str(val).replace("€", "").strip()
-                # Gestione formato europeo (1.000,00) -> python float (1000.00)
-                if "." in s and "," in s:
-                    s = s.replace(".", "").replace(",", ".")
-                elif "," in s:
-                    s = s.replace(",", ".")
-                try:
-                    f_val = float(s)
-                except:
-                    f_val = 0.0
+        # Invece di formattare come testo (che causa errori), convertiamo in FLOAT puro
+        # e lasciamo che la NumberColumn lo visualizzi come Euro.
+        def converti_in_float_puro(val):
+            if pd.isna(val) or str(val).strip() == "": return 0.0
             
-            # Formattazione output: 1000.00 -> "€ 1.000,00"
-            return f"€ {f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            # Se è già float o int, ok
+            if isinstance(val, (float, int)): return float(val)
+            
+            s = str(val).replace("€", "").strip()
+            # Logica Italiana: rimuovi punti migliaia, trasforma virgola in punto
+            # Esempio: "1.628,64" -> togli punto -> "1628,64" -> virgola punto -> 1628.64
+            if "," in s:
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                # Se non c'è virgola ma ci sono punti (es 1.628), rimuovi i punti
+                if "." in s: s = s.replace(".", "")
+                
+            try: return float(s)
+            except: return 0.0
 
         if "Totale Commessa" in df_to_edit.columns:
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(pulisci_e_formatta_euro)
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(converti_in_float_puro)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
@@ -1291,8 +1282,8 @@ def render_dashboard():
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                # Usiamo TextColumn perché ora passiamo una stringa già formattata (es. € 1.230,64)
-                "Totale Commessa": st.column_config.TextColumn("Totale Commessa"), 
+                # FIX: Usiamo NumberColumn con formato Euro. Legge il float 1628.64 e scrive € 1.628,64
+                "Totale Commessa": st.column_config.NumberColumn("Totale Commessa", format="€ %.2f"), 
             },
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
@@ -1488,6 +1479,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
