@@ -886,11 +886,14 @@ def render_clienti_page():
 
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
+    # Carica i dati. Se usi @st.cache_data su carica_dati, assicurati che si aggiorni.
+    # In caso di dubbi, forza lo svuotamento cache se necessario (opzionale)
+    # st.cache_data.clear() 
     df = carica_dati("Foglio1")
+    
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
     
     # --- GESTIONE STATO MODIFICA (Session State) ---
-    # Inizializziamo la variabile che tiene traccia di quale commessa stiamo modificando
     if "edit_codice_commessa" not in st.session_state:
         st.session_state["edit_codice_commessa"] = None
 
@@ -898,12 +901,10 @@ def render_dashboard():
     def attiva_modifica():
         selezione = st.session_state.get("trigger_selezione_commessa")
         if selezione:
-            # Estrae il codice e lo salva nello stato
             st.session_state["edit_codice_commessa"] = selezione.split(" | ")[0]
-            # Resetta la selectbox visualmente per la prossima volta
             st.session_state["trigger_selezione_commessa"] = ""
 
-    # Se stiamo MODIFICANDO, mostriamo SOLO il form
+    # --- MODALITÀ MODIFICA (Schermata Esclusiva) ---
     if st.session_state["edit_codice_commessa"] is not None:
         codice_corrente = st.session_state["edit_codice_commessa"]
         
@@ -913,27 +914,29 @@ def render_dashboard():
         if not record_corrente.empty:
             dati_commessa = record_corrente.iloc[0].to_dict()
             
-            # Renderizza il form.
-            # NOTA: Se render_commessa_form restituisce True (dopo un salvataggio), chiudiamo.
+            # Renderizza il form
             esito_salvataggio = render_commessa_form(dati_commessa)
             
-            # Se la funzione ritorna True (Salvataggio OK) o se l'utente clicca Annulla
-            c_chiudi, c_nulla = st.columns([1, 4])
+            # GESTIONE USCITA DOPO SALVATAGGIO
             if esito_salvataggio == True:
-                st.success("Salvataggio rilevato, chiusura in corso...")
+                # Se è stato salvato (e forse rinominato), resettiamo e ricarichiamo
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
             
-            # Pulsante manuale per uscire se render_commessa_form non restituisce valori
+            # Pulsante manuale per uscire
             st.markdown("---")
             if st.button("🔙 CHIUDI E TORNA ALLA DASHBOARD", key="btn_close_edit"):
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
-            st.error("Errore: Commessa non trovata.")
-            if st.button("Torna indietro"):
-                st.session_state["edit_codice_commessa"] = None
-                st.rerun()
+            # --- FIX FONDAMENTALE ---
+            # Se siamo qui, significa che il codice cercato NON ESISTE PIÙ.
+            # Questo succede legittimamente quando CAMBI SETTORE (il codice cambia da RIL a ARC, etc.)
+            # Invece di dare errore, assumiamo che sia andato tutto bene e torniamo alla lista.
+            st.warning(f"⚠️ Aggiornamento completato (Codice modificato o Record eliminato). Torno alla lista...")
+            time.sleep(1.5) # Un attimo di pausa per far leggere l'avviso
+            st.session_state["edit_codice_commessa"] = None
+            st.rerun()
         
         # Interrompiamo l'esecuzione qui per nascondere il resto della dashboard durante la modifica
         return
@@ -942,11 +945,10 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI (Netto e Lordo) ---
+        # --- 1. CALCOLO DATI KPI ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
-            
             def pulisci_valuta(valore_raw):
                 if not valore_raw: return 0.0
                 s = str(valore_raw).replace("€", "").strip()
@@ -969,14 +971,12 @@ def render_dashboard():
                             if isinstance(v, dict) and "Stato" in v:
                                 dati_reali = v
                                 break 
-                    
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
                         t_netto += pulisci_valuta(dati_reali.get("Importo netto €", 0))
                         t_lordo += pulisci_valuta(dati_reali.get("Importo lordo €", 0))
             except: 
                 return pd.Series([0.0, 0.0])
-            
             return pd.Series([t_netto, t_lordo])
 
         # --- 2. PREPARAZIONE DATI ---
@@ -1004,10 +1004,8 @@ def render_dashboard():
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
-            
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
-            
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
@@ -1032,8 +1030,7 @@ def render_dashboard():
                 </div>
             </div>
             """
-            with col:
-                st.markdown(card_html, unsafe_allow_html=True)
+            with col: st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
@@ -1047,27 +1044,15 @@ def render_dashboard():
              opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
         
         st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto.")
-        
-        # Selectbox con Callback per gestire l'apertura
-        st.selectbox(
-            "Seleziona per Modifica:", 
-            options=[""] + opts,
-            key="trigger_selezione_commessa", # Chiave per session_state
-            on_change=attiva_modifica        # Funzione chiamata al cambio valore
-        )
-        
-        # Nota: La logica di visualizzazione form è stata spostata all'inizio della funzione
-        # per coprire l'intera dashboard quando attiva.
+        st.selectbox("Seleziona per Modifica:", [""] + opts, key="trigger_selezione_commessa", on_change=attiva_modifica)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- GESTIONE STATO SELEZIONE (Definito prima dell'uso) ---
+    # --- GESTIONE STATO SELEZIONE ---
     if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-    # --- LAYOUT ARCHIVIO E AZIONI ---
+    # --- ARCHIVIO E IMPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
-    
-    # Colonna Sinistra: Titolo e Pulsanti Selezione
     with c_title: 
         st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
         if not df.empty:
@@ -1081,7 +1066,6 @@ def render_dashboard():
                     st.session_state["select_all_state"] = False
                     st.rerun()
 
-    # Colonna Destra: Import/Export Tabs
     with c_actions:
         tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
         with tab_backup:
@@ -1103,8 +1087,13 @@ def render_dashboard():
     # --- TABELLA GESTIONALE ---
     if not df.empty:
         df_to_edit = df_filtered.copy()
-        df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         
+        # Correzione logica selezione: aggiungiamo la colonna Elimina basata sullo stato
+        if "Elimina" not in df_to_edit.columns:
+             df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
+        else:
+             df_to_edit["Elimina"] = st.session_state["select_all_state"]
+
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
@@ -1125,7 +1114,6 @@ def render_dashboard():
         )
 
         rows_to_delete = edited_df[edited_df["Elimina"] == True]
-        
         if not rows_to_delete.empty:
             st.error(f"⚠️ ATTENZIONE: Hai selezionato {len(rows_to_delete)} commesse per l'ELIMINAZIONE.")
             if st.button(f"🗑️ CONFERMA CANCELLAZIONE DI {len(rows_to_delete)} COMMESSE", type="primary"):
@@ -1312,6 +1300,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
