@@ -386,33 +386,59 @@ def render_commessa_form(data=None):
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
-        # --- FIX CODICE: FORMATO RIL/2026-001 ---
+        # --- FIX CODICE: AUTO-INCREMENTO E FORMATO ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
             codice_display = val_codice_originale
             
             if is_edit and val_codice_originale:
-                # Splitta sia se c'è / sia se c'è - per gestire vecchi formati e nuovi
+                # --- LOGICA MODIFICA (Mantiene logica esistente) ---
                 parts = re.split(r'[-/]', val_codice_originale)
                 
-                # Caso standard: PREFISSO / ANNO - NUMERO (almeno 3 parti)
+                # Caso standard: PREFISSO / ANNO - NUMERO
                 if len(parts) >= 3:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    # Ricostruzione precisa: PREFISSO + / + ANNO + - + NUMERO
-                    # parts[1] è l'anno, parts[2] (o l'ultimo) è il numero
+                    # Ricostruisce mantenendo il numero originale ma aggiornando il prefisso se cambia il settore
                     codice_display = f"{nuovo_prefisso}/{parts[1]}-{parts[2]}"
                 
-                # Caso fallback (codici vecchi tipo RIL-001 o formati strani)
+                # Caso fallback
                 elif len(parts) >= 2:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
                     codice_display = f"{nuovo_prefisso}/{parts[-1]}"
+
             elif not is_edit:
+                # --- LOGICA NUOVO: AUTO-INCREMENTO ---
                 prefisso = mappa_settori.get(settore, "RIL")
-                # FORMATO NUOVO: Slash e Trattino
-                codice_display = f"{prefisso}/{anno}-001"
+                base_code_search = f"{prefisso}/{anno}-" # Es. RIL/2024-
+                
+                # 1. Carica i dati per controllare l'ultimo numero
+                df_check = carica_dati("Foglio1")
+                max_num = 0
+                
+                if not df_check.empty and "Codice" in df_check.columns:
+                    # Filtra solo i codici che non sono nulli e li converte in stringa
+                    codici_esistenti = df_check["Codice"].dropna().astype(str)
+                    
+                    # Cerca i codici che matchano Prefisso e Anno corrente
+                    for c in codici_esistenti:
+                        if c.startswith(base_code_search):
+                            try:
+                                # Prende la parte dopo il trattino (es. "001")
+                                suffix = c.split("-")[-1]
+                                num = int(suffix)
+                                if num > max_num:
+                                    max_num = num
+                            except:
+                                pass # Ignora codici malformati
+                
+                # 2. Calcola il prossimo numero
+                next_num = max_num + 1
+                
+                # 3. Genera il codice (es. RIL/2024-002)
+                codice_display = f"{base_code_search}{next_num:03d}"
 
             st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
-            codice_finale = codice_display 
+            codice_finale = codice_display
 
         with c4:
             idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
@@ -1331,6 +1357,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
