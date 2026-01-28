@@ -422,6 +422,32 @@ def render_commessa_form(data=None):
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # --- MODIFICA LISTA SERVIZI ---
+        SERVIZI_LIST = sorted([
+            "Archeologia Preventiva",
+            "Assistenza Archeologica",
+            "Campionamento malte",
+            "Drone",
+            "Indagine Diagnostica",
+            "Inquadramento Archeologico Preliminare",
+            "Modellazione 3D",
+            "Modellazione BIM",
+            "Relazione Archeologica",
+            "Relazione Storica",
+            "Ricerca Archeologica",
+            "Rilievo Fotogrammetrico",
+            "Rilievo GPS",
+            "Rilievo Laser Scanner",
+            "Rilievo Topografico",
+            "RTI",
+            "Scavo Archeologico",
+            "Sorveglianza Archeologica",
+            "Stampa 3D",
+            "VIARCH",
+            "Virtual Tour",
+            "VPIA"
+        ])
+
         c_serv, c_dett = st.columns([2, 1])
         with c_serv: servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
         with c_dett: dettagli_servizi = st.text_input("Dettagli", value=val_dettagli)
@@ -1303,6 +1329,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
