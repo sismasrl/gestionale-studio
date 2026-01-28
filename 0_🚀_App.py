@@ -1048,91 +1048,77 @@ def render_clienti_page():
 
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
-    # Carica i dati
+    # Carica i dati aggiornati
     # st.cache_data.clear() 
     df = carica_dati("Foglio1")
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
-    # --- FUNZIONE DI CONVERSIONE "INTELLIGENTE" ---
-    # Questa è la chiave per risolvere il problema:
-    # 1. Se vede la virgola (es: "1.628,64"), assume formato ITALIANO -> Toglie punti, cambia virgola in punto.
-    # 2. Se NON vede virgola ma vede punto (es: "1628.64"), assume formato STANDARD -> Non toglie nulla.
+    # --- FUNZIONE DI CONVERSIONE BLINDATA ---
     def normalizza_importo(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
         
-        # Se è già un numero puro, lo restituiamo subito
+        # 1. Se è già un numero (float o int), è PERFETTO. Non toccarlo.
         if isinstance(val, (float, int)):
             return float(val)
             
         s = str(val).replace("€", "").strip()
         
-        # LOGICA CONDIZIONALE:
+        # 2. CASO ITALIANO (es. "1.628,64")
+        # Se c'è una virgola, assumiamo sia il separatore decimale.
         if "," in s:
-            # C'è una virgola, quindi è sicuramente formato Europeo/Italiano (1.000,00 o 10,50)
-            # Rimuoviamo TUTTI i punti (separatori migliaia)
-            s = s.replace(".", "")
-            # Sostituiamo la virgola con il punto decimale
-            s = s.replace(",", ".")
-        else:
-            # NON c'è virgola. 
-            # Se c'è un punto (es. 1628.64), è già un decimale standard. NON RIMUOVERLO.
-            # Se non c'è nulla (es. 1628), va bene così.
-            pass
+            s = s.replace(".", "")  # Via i punti migliaia
+            s = s.replace(",", ".") # Virgola diventa punto
+            return float(s)
             
+        # 3. CASO STANDARD/PYTHON (es. "1628.64")
+        # Se NON c'è virgola, ma c'è il punto, è già corretto.
+        # L'errore prima era rimuovere questo punto. ORA LO LASCIAMO.
         try:
             return float(s)
         except:
             return 0.0
     
-    # --- GESTIONE STATO MODIFICA (Session State) ---
+    # --- GESTIONE STATO MODIFICA ---
     if "edit_codice_commessa" not in st.session_state:
         st.session_state["edit_codice_commessa"] = None
 
-    # Callback per gestire la selezione dalla tendina
     def attiva_modifica():
         selezione = st.session_state.get("trigger_selezione_commessa")
         if selezione:
             st.session_state["edit_codice_commessa"] = selezione.split(" | ")[0]
             st.session_state["trigger_selezione_commessa"] = ""
 
-    # --- MODALITÀ MODIFICA (Schermata Esclusiva) ---
+    # --- MODALITÀ MODIFICA ---
     if st.session_state["edit_codice_commessa"] is not None:
         codice_corrente = st.session_state["edit_codice_commessa"]
-        
-        # Recupera i dati del record corrente
         record_corrente = df[df["Codice"].astype(str) == str(codice_corrente)]
         
         if not record_corrente.empty:
             dati_commessa = record_corrente.iloc[0].to_dict()
-            
-            # Renderizza il form
             esito_salvataggio = render_commessa_form(dati_commessa)
             
-            # GESTIONE USCITA DOPO SALVATAGGIO
             if esito_salvataggio == True:
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
             
-            # Pulsante manuale per uscire
             st.markdown("---")
             if st.button("🔙 CHIUDI E TORNA ALLA DASHBOARD", key="btn_close_edit"):
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
-            st.warning(f"⚠️ Aggiornamento completato. Torno alla lista...")
+            st.warning("⚠️ Aggiornamento completato. Torno alla lista...")
             time.sleep(1.5)
             st.session_state["edit_codice_commessa"] = None
             st.rerun()
-        
         return
 
     # --- VISUALIZZAZIONE NORMALE ---
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI (usando la nuova funzione sicura) ---
+        # --- 1. CALCOLO DATI KPI ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
@@ -1146,7 +1132,6 @@ def render_dashboard():
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     dati_reali = item
-                    # Gestione strutture annidate se necessario
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
@@ -1155,7 +1140,7 @@ def render_dashboard():
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
-                        # QUI usiamo la funzione normalizza_importo
+                        # Usiamo la nuova funzione sicura
                         t_netto += normalizza_importo(dati_reali.get("Importo netto €", 0))
                         t_lordo += normalizza_importo(dati_reali.get("Importo lordo €", 0))
             except: 
@@ -1190,7 +1175,7 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Formattazione puramente visiva per le card
+            # Formattazione per la visualizzazione nelle card (solo estetica)
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
@@ -1220,7 +1205,7 @@ def render_dashboard():
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
     
-    # --- SELETTORE MODIFICA SINGOLA ---
+    # --- SELETTORE MODIFICA ---
     if not df.empty:
         opts = []
         for _, row in df.iterrows():
@@ -1233,10 +1218,9 @@ def render_dashboard():
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- GESTIONE STATO SELEZIONE ---
+    # --- GESTIONE ARCHIVIO ---
     if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-    # --- ARCHIVIO E IMPORT ---
     c_title, c_actions = st.columns([1, 1], gap="large")
     with c_title: 
         st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
@@ -1281,20 +1265,20 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX IMPORTI ARCHIVIO (Applicazione Logica Corretta) ---
+        # --- FIX IMPORTI ARCHIVIO (LA PARTE CRITICA) ---
         if "Totale Commessa" in df_to_edit.columns:
-            # Applichiamo la funzione intelligente: converte le stringhe in float corretti
+            # Qui applichiamo la funzione intelligente che NON rompe i numeri già corretti
             df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(normalizza_importo)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
+        # Configurazione Tabella
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                # Qui usiamo NumberColumn con format. 
-                # Dato che df_to_edit["Totale Commessa"] è ora FLOAT PURO, la visualizzazione sarà corretta.
+                # Streamlit visualizzerà il float (es. 1628.64) come € 1.628,64
                 "Totale Commessa": st.column_config.NumberColumn("Totale Commessa", format="€ %.2f"), 
             },
             disabled=[c for c in actual_cols if c != "Elimina"], 
@@ -1491,6 +1475,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
