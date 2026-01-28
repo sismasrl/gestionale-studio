@@ -434,6 +434,8 @@ def render_commessa_form(data=None):
             "Modellazione BIM",
             "Relazione Archeologica",
             "Relazione Storica",
+            "Restituzione CAD",
+            "Restituzione Fotopiani",
             "Ricerca Archeologica",
             "Rilievo Fotogrammetrico",
             "Rilievo GPS",
@@ -1329,6 +1331,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
