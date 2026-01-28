@@ -586,6 +586,9 @@ def render_commessa_form(data=None):
 
     # 04. PIANO ECONOMICO
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
+        # --- DEFINIZIONE FORMATTAZIONE EURO (1.000,00) ---
+        fmt_euro = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
             "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True),
@@ -609,8 +612,9 @@ def render_commessa_form(data=None):
         fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
-        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>€ {tot_net:,.2f}</div></div>", unsafe_allow_html=True)
-        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>€ {tot_lordo:,.2f}</div></div>", unsafe_allow_html=True)
+        # APPLICAZIONE FORMATO EURO
+        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
 
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
@@ -648,25 +652,29 @@ def render_commessa_form(data=None):
             b1, b2, b3, b4 = st.columns(4)
             with b1:
                 val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>€ {val_portatore:,.2f}</div></div>", unsafe_allow_html=True)
+                # APPLICAZIONE FORMATO EURO
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
                 new_perc_port = st.number_input("Perc %", 0, 100, int(st.session_state["perc_portatore"]), key="np")
                 if new_perc_port != st.session_state["perc_portatore"]:
                     st.session_state["perc_portatore"] = new_perc_port
                     st.rerun()
             with b2:
                 val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>€ {val_societa:,.2f}</div></div>", unsafe_allow_html=True)
+                # APPLICAZIONE FORMATO EURO
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc %", 0, 100, int(st.session_state["perc_societa"]), key="ns")
                 if new_perc_soc != st.session_state["perc_societa"]:
                     st.session_state["perc_societa"] = new_perc_soc
                     st.rerun()
             with b3: 
                 val_iva = tot_lordo - tot_net
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>€ {val_iva:,.2f}</div></div>", unsafe_allow_html=True)
+                # APPLICAZIONE FORMATO EURO
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>{fmt_euro(val_iva)}</div></div>", unsafe_allow_html=True)
             with b4: 
                 val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
                 color = "#ff4b4b" if val_utili < 0 else "#ffffff"
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>€ {val_utili:,.2f}</div></div>", unsafe_allow_html=True)
+                # APPLICAZIONE FORMATO EURO
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     
@@ -1368,6 +1376,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
