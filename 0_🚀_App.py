@@ -706,23 +706,23 @@ def render_clienti_page():
     with c_form:
         st.markdown("<h3 style='text-align: center;'>SCHEDA CLIENTE</h3>", unsafe_allow_html=True)
         
-        # Gestione indice per sincronizzare Selectbox con la Tabella
+        # Gestione indice per sincronizzare Selectbox
         idx_sel = 0
         current_sel = st.session_state["cliente_selezionato"]
         if current_sel in nomi:
-            idx_sel = nomi.index(current_sel) + 1 # +1 perché c'è l'opzione vuota all'inizio
+            idx_sel = nomi.index(current_sel) + 1 
         
-        # Selectbox sincronizzata
+        # Selectbox principale
         sel = st.selectbox("Cerca o Modifica:", [""] + nomi, index=idx_sel, key="sb_cliente_main")
         
-        # Se l'utente cambia la selectbox manualmente, aggiorniamo lo stato
+        # Aggiornamento stato
         if sel != st.session_state["cliente_selezionato"]:
             st.session_state["cliente_selezionato"] = sel
             
         # Recupero Dati
         d = df[df["Denominazione"] == sel].iloc[0].to_dict() if sel and not df.empty else {}
         
-        # Tasto per pulire il form (Nuovo inserimento)
+        # Tasto Nuovo
         if sel:
             if st.button("➕ NUOVO CLIENTE (Deseleziona)", use_container_width=True):
                 st.session_state["cliente_selezionato"] = None
@@ -744,7 +744,6 @@ def render_clienti_page():
             mail = st.text_input("Email", value=d.get("Email", ""))
             
             c5, c6 = st.columns(2)
-            # Gestione opzionale SOCI_OPZIONI
             lista_soci = SOCI_OPZIONI if 'SOCI_OPZIONI' in globals() else ["Socio A", "Socio B"]
             
             idx_cont = lista_soci.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in lista_soci else 0
@@ -784,23 +783,14 @@ def render_clienti_page():
                     st.success("Cliente salvato!")
                     time.sleep(1)
                     st.rerun()
-        
-        if sel:
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🗑️ Zona Pericolo (Singola)"):
-                if st.button("ELIMINA CLIENTE DEFINITIVAMENTE", type="primary"):
-                    elimina_record(sel, "Clienti", "Denominazione")
-                    st.session_state["cliente_selezionato"] = None
-                    st.rerun()
 
     # --- COLONNA DESTRA: LISTA E IMPORT/EXPORT ---
     with c_list:
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
         
-        # --- SEZIONE IMPORT / EXPORT MASSIVO (Excel) ---
+        # --- SEZIONE IMPORT / EXPORT ---
         with st.expander("📂 IMPORT / EXPORT MASSIVO (Excel)", expanded=False):
             k1, k2 = st.columns(2)
-            
             colonne_export = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Contatto_SISMA", "Settore", "Attivo", "Note"]
 
             # EXPORT
@@ -830,12 +820,11 @@ def render_clienti_page():
                     try:
                         df_new = pd.read_excel(uploaded_file, dtype=str).fillna("")
                         if "Denominazione" not in df_new.columns:
-                            st.error("Errore: Il file non contiene la colonna 'Denominazione'.")
+                            st.error("Manca colonna 'Denominazione'")
                         else:
                             count = 0
                             progress_bar = st.progress(0)
-                            total_rows = len(df_new)
-                            
+                            total = len(df_new)
                             for index, row in df_new.iterrows():
                                 rec_import = row.to_dict()
                                 if rec_import.get("Denominazione") and str(rec_import["Denominazione"]).strip() != "":
@@ -843,10 +832,10 @@ def render_clienti_page():
                                         rec_import["Attivo"] = "TRUE"
                                     salva_record(rec_import, "Clienti", "Denominazione", "update")
                                     count += 1
-                                if total_rows > 0:
-                                    progress_bar.progress((index + 1) / total_rows)
+                                if total > 0:
+                                    progress_bar.progress((index + 1) / total)
                             time.sleep(0.5)
-                            st.success(f"✅ Import completato: {count} clienti!")
+                            st.success(f"Importati {count} clienti!")
                             time.sleep(1.5)
                             st.rerun()
                     except Exception as e:
@@ -854,32 +843,27 @@ def render_clienti_page():
 
         st.divider()
 
-        # --- VISUALIZZAZIONE TABELLA CON CANCELLAZIONE ---
+        # --- VISUALIZZAZIONE TABELLA (SOLO CANCELLAZIONE) ---
         if not df.empty:
             df_view = df.copy()
             df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
             
-            # Aggiungiamo colonne interattive: Cancella e Seleziona
-            df_view.insert(0, "Cancella", False)   # Colonna per cancellare
-            df_view.insert(1, "Seleziona", False)  # Colonna per selezionare
-            
-            if st.session_state["cliente_selezionato"]:
-                df_view.loc[df_view["Denominazione"] == st.session_state["cliente_selezionato"], "Seleziona"] = True
+            # Aggiungiamo SOLO la colonna Cancella
+            df_view.insert(0, "Cancella", False)
 
-            target_cols = ["Cancella", "Seleziona", "Denominazione", "P_IVA", "Referente", "Telefono", "Email", "Settore", "Attivo"]
+            target_cols = ["Cancella", "Denominazione", "P_IVA", "Referente", "Telefono", "Email", "Settore", "Attivo"]
             final_cols = [c for c in target_cols if c in df_view.columns]
             
-            # Data Editor Interattivo
+            # Data Editor
             edited_df = st.data_editor(
                 df_view[final_cols], 
                 column_config={
                     "Cancella": st.column_config.CheckboxColumn("🗑️", width="small", default=False),
-                    "Seleziona": st.column_config.CheckboxColumn("✏️", width="small", default=False),
                     "Attivo": st.column_config.CheckboxColumn(disabled=True),
                     "Denominazione": st.column_config.TextColumn(width="medium"),
                 }, 
-                # Disabilitiamo tutte le colonne tranne Cancella e Seleziona
-                disabled=[c for c in final_cols if c not in ["Cancella", "Seleziona"]], 
+                # Tutto disabilitato tranne Cancella
+                disabled=[c for c in final_cols if c != "Cancella"], 
                 use_container_width=True, 
                 hide_index=True,
                 height=600,
@@ -889,30 +873,20 @@ def render_clienti_page():
             # --- LOGICA CANCELLAZIONE ---
             rows_to_delete = edited_df[edited_df["Cancella"] == True]
             if not rows_to_delete.empty:
-                st.warning(f"⚠️ Hai selezionato {len(rows_to_delete)} clienti da ELIMINARE.")
-                col_conf_a, col_conf_b = st.columns(2)
-                if col_conf_a.button("🔴 CONFERMA ELIMINAZIONE", use_container_width=True):
+                st.warning(f"⚠️ Vuoi eliminare {len(rows_to_delete)} clienti?")
+                if st.button("🔴 CONFERMA ELIMINAZIONE", use_container_width=True):
                     for index, row in rows_to_delete.iterrows():
                         nome_da_cancellare = row["Denominazione"]
                         elimina_record(nome_da_cancellare, "Clienti", "Denominazione")
                         
-                        # Se eliminiamo quello attualmente selezionato nel form, resettiamo lo stato
+                        # Reset form se eliminiamo il selezionato
                         if st.session_state["cliente_selezionato"] == nome_da_cancellare:
                             st.session_state["cliente_selezionato"] = None
                             
-                    st.success("Cancellazione completata.")
+                    st.success("Cancellazione eseguita.")
                     time.sleep(1)
                     st.rerun()
 
-            # --- LOGICA DI SELEZIONE ---
-            selection = edited_df[edited_df["Seleziona"] == True]
-            if not selection.empty:
-                selected_name = selection.iloc[0]["Denominazione"]
-                if selected_name != st.session_state["cliente_selezionato"]:
-                    st.session_state["cliente_selezionato"] = selected_name
-                    st.rerun()
-            elif st.session_state["cliente_selezionato"] is not None and selection.empty:
-                 pass
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     # Carica i dati. Se usi @st.cache_data su carica_dati, assicurati che si aggiorni.
@@ -1329,6 +1303,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
