@@ -1055,26 +1055,21 @@ def render_dashboard():
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
     # --- FUNZIONE DI CONVERSIONE (APPROCCIO "FLOAT PURO") ---
+    # Questa serve per i calcoli e per pulire i dati grezzi
     def normalizza_importo(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
         
-        # 1. Se è già un numero (float o int), lo restituiamo subito.
         if isinstance(val, (float, int)):
             return float(val)
             
-        # 2. Pulizia base stringa
         s = str(val).replace("€", "").strip()
         
-        # 3. Logica Condizionale "Difensiva":
-        # Se c'è una virgola, è sicuramente formato italiano (es. 1.200,50)
-        # Solo in questo caso rimuoviamo i punti delle migliaia.
+        # Logica per interpretare input misti (1.000,00 vs 1000.00)
         if "," in s:
-            s = s.replace(".", "")  # Via i punti (1.200 -> 1200)
-            s = s.replace(",", ".") # Virgola diventa punto (1200,50 -> 1200.50)
+            s = s.replace(".", "")  # Via i punti
+            s = s.replace(",", ".") # Virgola -> Punto
         
-        # 4. Tentativo di conversione finale
-        # Se non c'era la virgola, il punto decimale (1628.64) viene preservato.
         try:
             return float(s)
         except:
@@ -1108,7 +1103,7 @@ def render_dashboard():
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
-            st.warning("⚠️ Aggiornamento completato. Torno alla lista...")
+            st.warning("⚠️ Record non trovato. Torno alla lista...")
             time.sleep(1.5)
             st.session_state["edit_codice_commessa"] = None
             st.rerun()
@@ -1140,7 +1135,6 @@ def render_dashboard():
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
-                        # Usiamo la nuova funzione sicura
                         t_netto += normalizza_importo(dati_reali.get("Importo netto €", 0))
                         t_lordo += normalizza_importo(dati_reali.get("Importo lordo €", 0))
             except: 
@@ -1175,8 +1169,7 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Formattazione SOLO VISIVA per le card (HTML)
-            # Qui trasformiamo i float in stringa italiana SOLO per l'occhio umano, non per i calcoli.
+            # Formattazione SOLO VISIVA (Stringa)
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
@@ -1266,11 +1259,16 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX IMPORTI ARCHIVIO (LA PARTE CRITICA) ---
+        # --- FIX FORMATTAZIONE FORZATA (Stringa) ---
         if "Totale Commessa" in df_to_edit.columns:
-            # Applichiamo la funzione normalizza_importo che ora è SICURA.
-            # Se trova "1628.64", lo lascia float. Se trova "1.628,64", lo converte.
+            # 1. Assicuriamo che il dato sia un float pulito per evitare errori
             df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(normalizza_importo)
+            
+            # 2. CONVERSIONE IN STRINGA FORMULATA (Questo FORZA la visualizzazione)
+            # Trasformiamo 1895.67 -> "€ 1.895,67" scambiando fisicamente i caratteri
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(
+                lambda x: "€ {:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+            )
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
@@ -1280,14 +1278,15 @@ def render_dashboard():
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                # Streamlit visualizzerà il float (es. 1628.64) formattato come € 1.628,64
-                # Ma il valore sottostante resta un numero puro.
-                "Totale Commessa": st.column_config.NumberColumn(
-                    "Totale Commessa", 
-                    format="€ %.2f",
-                    step=0.01  # Aggiunto step per precisione decimale nell'editor
+                
+                # QUI CAMBIA TUTTO: Usiamo TextColumn perché ora passiamo una stringa ("€ 1.895,67")
+                # Non usiamo più NumberColumn o format, perché la stringa è già perfetta.
+                "Totale Commessa": st.column_config.TextColumn(
+                    "Totale Commessa",
+                    help="Importo totale commessa (Formato Italiano)"
                 ), 
             },
+            # Le colonne sono disabilitate (tranne elimina), quindi la stringa è sicura.
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1482,6 +1481,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
