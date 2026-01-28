@@ -1085,12 +1085,9 @@ def render_dashboard():
         val_float = pulisci_per_calcoli(val)
         
         # 2. Formatta in standard US con DUE DECIMALI FISSI (.2f)
-        # Es: 1500 -> "1,500.00"
-        # Es: 1628.5 -> "1,628.50"
         base = "{:,.2f}".format(val_float)
         
         # 3. Inversione manuale caratteri per l'Italiano
-        # "1,500.00" -> "1.500,00"
         finale = base.replace(",", "X").replace(".", ",").replace("X", ".")
         
         return f"€ {finale}"
@@ -1155,7 +1152,7 @@ def render_dashboard():
                                 break 
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
-                    # Somma solo se fatturato (o rimuovi if per sommare tutto)
+                    # Somma solo se fatturato
                     if "fatturato" in stato:
                         t_netto += pulisci_per_calcoli(dati_reali.get("Importo netto €", 0))
                         t_lordo += pulisci_per_calcoli(dati_reali.get("Importo lordo €", 0))
@@ -1280,30 +1277,40 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX DEFINITIVO ---
-        # 1. SOVRASCRIVI LA COLONNA 'Totale Commessa' CON IL VALORE CALCOLATO DAI JSON
-        #    Questo assicura che il totale sia la somma esatta degli importi netti inseriti nella scheda.
+        # --- FIX VISIVO & COLONNE CALCOLATE ---
+        # 1. Creiamo le due colonne Totale Netto e Totale Lordo prendendo i dati dai calcoli KPI
         if "_Fatt_Netto_Calc" in df_filtered.columns:
-             df_to_edit["Totale Commessa"] = df_filtered["_Fatt_Netto_Calc"]
+             df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
+        
+        if "_Fatt_Lordo_Calc" in df_filtered.columns:
+             df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
 
-        # 2. Converti in TESTO FORMATTATO
-        if "Totale Commessa" in df_to_edit.columns:
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(forza_testo_visivo)
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].astype(str)
+        # 2. Convertiamo entrambe in TESTO FORMATTATO (Decimali fissi e stile €)
+        for col_name in ["Totale Netto", "Totale Lordo"]:
+            if col_name in df_to_edit.columns:
+                df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo)
+                df_to_edit[col_name] = df_to_edit[col_name].astype(str)
 
-        cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
+        # Definiamo le colonne da mostrare nell'ordine desiderato
+        cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", default=False, width="small"),
-                "Totale Commessa": st.column_config.TextColumn(
-                    "Totale Commessa",
+                "Totale Netto": st.column_config.TextColumn(
+                    "Totale Netto",
                     help="Somma Netta calcolata dagli importi della scheda (Fissa 2 decimali)",
                     width="medium"
-                ), 
+                ),
+                "Totale Lordo": st.column_config.TextColumn(
+                    "Totale Lordo",
+                    help="Somma Lorda calcolata dagli importi della scheda (Fissa 2 decimali)",
+                    width="medium"
+                ),
             },
+            # Disabilitiamo edit su tutte le colonne tranne "Elimina"
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1498,6 +1505,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
