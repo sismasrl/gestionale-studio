@@ -586,12 +586,27 @@ def render_commessa_form(data=None):
 
     # 04. PIANO ECONOMICO
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
-        # --- DEFINIZIONE FORMATTAZIONE EURO (1.000,00) ---
+        
+        # --- FUNZIONI DI UTILITÀ PER FORMATTAZIONE E CONVERSIONE ---
+        # 1. Per visualizzare: converte 1000.00 -> "€ 1.000,00"
         fmt_euro = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
+        # 2. Per calcolare: converte stringhe "1.000,00" (o miste) -> float 1000.00
+        def safe_float(val):
+            if pd.isna(val) or str(val).strip() == "": return 0.0
+            if isinstance(val, (float, int)): return float(val)
+            s = str(val).replace("€", "").strip()
+            # Logica Italiana: rimuovo i punti (migliaia) e sostituisco virgola con punto
+            if "." in s and "," in s: s = s.replace(".", "").replace(",", ".")
+            elif "," in s: s = s.replace(",", ".")
+            # Se ci sono solo punti (es. 1.200 inserito all'inglese), attenzione, ma assumiamo standard IT
+            try: return float(s)
+            except: return 0.0
+
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
-            "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            # Usiamo step=0.01 per forzare il comportamento numerico nell'editor
+            "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
             "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
@@ -599,30 +614,43 @@ def render_commessa_form(data=None):
             "Note": st.column_config.TextColumn()
         }
         order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data", "Note"]
+        
+        # Editor
         edited_incassi = st.data_editor(st.session_state["stato_incassi"], num_rows="dynamic", column_config=col_cfg, column_order=order_cols, use_container_width=True, key="ed_inc")
         
+        # --- FIX CALCOLO: FORZATURA TIPI FLOAT ---
+        # Puliamo la colonna chiave per evitare errori di somma
         ricalcolo = edited_incassi.copy()
+        ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(safe_float)
+        
+        # Ricalcolo matematico del lordo (basato sui float puliti)
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
+        
         if not ricalcolo.equals(st.session_state["stato_incassi"]):
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
+        # Somme sicure sui dati convertiti
         tot_net = st.session_state["stato_incassi"]["Importo netto €"].sum()
         tot_lordo = st.session_state["stato_incassi"]["Importo lordo €"].sum()
-        fatturato_netto = st.session_state["stato_incassi"][st.session_state["stato_incassi"]['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
+        
+        # Filtro per fatturato (assicurandoci che i dati siano float)
+        df_fatt = st.session_state["stato_incassi"].copy()
+        df_fatt["Importo netto €"] = df_fatt["Importo netto €"].apply(safe_float)
+        fatturato_netto = df_fatt[df_fatt['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
 
         k1, k2 = st.columns(2)
-        # APPLICAZIONE FORMATO EURO
         with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
         with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
 
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
+        
         st.markdown("### SOCI")
         soci_cfg = {
             "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True),
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
@@ -630,7 +658,7 @@ def render_commessa_form(data=None):
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
@@ -638,21 +666,22 @@ def render_commessa_form(data=None):
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
-            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True),
+            "Importo": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
-        sum_soci = edited_soci["Importo"].sum()
-        sum_collab = edited_collab["Importo"].sum()
-        sum_spese = edited_spese["Importo"].sum()
+        # --- FIX SOMME COSTI ---
+        # Applichiamo safe_float anche qui per garantire somme corrette
+        sum_soci = edited_soci["Importo"].apply(safe_float).sum()
+        sum_collab = edited_collab["Importo"].apply(safe_float).sum()
+        sum_spese = edited_spese["Importo"].apply(safe_float).sum()
         
         with top_metrics:
             b1, b2, b3, b4 = st.columns(4)
             with b1:
                 val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                # APPLICAZIONE FORMATO EURO
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
                 new_perc_port = st.number_input("Perc %", 0, 100, int(st.session_state["perc_portatore"]), key="np")
                 if new_perc_port != st.session_state["perc_portatore"]:
@@ -660,7 +689,6 @@ def render_commessa_form(data=None):
                     st.rerun()
             with b2:
                 val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                # APPLICAZIONE FORMATO EURO
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
                 new_perc_soc = st.number_input("Perc %", 0, 100, int(st.session_state["perc_societa"]), key="ns")
                 if new_perc_soc != st.session_state["perc_societa"]:
@@ -668,12 +696,10 @@ def render_commessa_form(data=None):
                     st.rerun()
             with b3: 
                 val_iva = tot_lordo - tot_net
-                # APPLICAZIONE FORMATO EURO
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>{fmt_euro(val_iva)}</div></div>", unsafe_allow_html=True)
             with b4: 
                 val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
                 color = "#ff4b4b" if val_utili < 0 else "#ffffff"
-                # APPLICAZIONE FORMATO EURO
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -1402,6 +1428,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
