@@ -670,16 +670,18 @@ def render_commessa_form(data=None):
 
     st.markdown("---")
     
-    # --- SALVATAGGIO: LOGICA CORRETTA (SALVA NUOVO -> POI CANCELLA VECCHIO) ---
+    # --- SALVATAGGIO: LOGICA CORRETTA ---
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
         else:
+            # Gestione Nuovo Cliente "al volo"
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
                 rec_cliente = {"Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO"}
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
+            # Preparazione dati JSON
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             json_data = json.dumps({
@@ -704,32 +706,42 @@ def render_commessa_form(data=None):
             }
 
             # -----------------------------------------------------------
-            # FIX LOGICA SALVATAGGIO:
+            # LOGICA SALVATAGGIO DIFFERENZIATA
             # -----------------------------------------------------------
+            
+            # CASO 1: MODIFICA DEL CODICE (es. cambio settore)
             if is_edit and codice_finale != val_codice_originale:
-                # 1. CASO: IL CODICE E' CAMBIATO (es. da RIL a ARC)
-                # Prima SALVIAMO il nuovo record per essere sicuri che i dati esistano
                 salva_record(rec, "Foglio1", "Codice", mode="new")
-                
-                # Poi CANCELLIAMO il vecchio record
                 elimina_record(val_codice_originale, "Foglio1", "Codice")
-                
                 st.success(f"Commessa aggiornata da {val_codice_originale} a {codice_finale}")
-                time.sleep(1) # Pausa per leggere il messaggio
-                return True   # <--- SEGNALE ALLA DASHBOARD DI CHIUDERE
+                time.sleep(1)
+                return True # Chiude e torna alla dashboard
 
+            # CASO 2: UPDATE O NUOVO INSERIMENTO
             else:
-                # 2. CASO: UPDATE NORMALE O NUOVA COMMESSA
                 mode_save = "update" if is_edit else "new"
                 salva_record(rec, "Foglio1", "Codice", mode=mode_save)
                 
-                if is_edit: 
+                if is_edit:
+                    # SE STIAMO MODIFICANDO -> Torna alla dashboard
                     st.success("Commessa aggiornata!")
+                    time.sleep(1)
+                    return True 
                 else:
-                    st.success("Nuova commessa creata!")
-                
-                time.sleep(1) # Pausa per leggere il messaggio
-                return True   # <--- SEGNALE ALLA DASHBOARD DI CHIUDERE
+                    # SE E' NUOVA -> Pulisce tutto e rimane sul form
+                    st.success("Nuova commessa salvata! Resetto il form...")
+                    time.sleep(1)
+                    
+                    # RESET VARIABILI DI STATO PER NUOVO INSERIMENTO
+                    keys_to_clear = ["form_cliente", "form_piva", "form_sede", "form_ref", "form_tel", "stato_incassi", "sel_cliente_box"]
+                    for k in keys_to_clear:
+                        if k in st.session_state: del st.session_state[k]
+                    
+                    # Imposta last_loaded_code per forzare il refresh come 'NEW'
+                    st.session_state["last_loaded_code"] = "RESET"
+                    
+                    # Ricarica la pagina (eseguirà render con campi vuoti)
+                    st.rerun()
 
     if is_edit:
         with st.expander("⚠️ ZONA PERICOLO"):
@@ -739,7 +751,6 @@ def render_commessa_form(data=None):
                 time.sleep(1)
                 return True # Chiude anche in caso di eliminazione
 
-    # IMPORTANTE: Se non si preme nulla, ritorna False (o None) così la finestra resta aperta
     return False
 
 # --- 4. CLIENTI PAGE (DEFINIZIONE FUNZIONE) ---
@@ -1357,6 +1368,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
