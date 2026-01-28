@@ -1048,11 +1048,43 @@ def render_clienti_page():
 
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
-    # Carica i dati. 
+    # Carica i dati
     # st.cache_data.clear() 
     df = carica_dati("Foglio1")
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
+
+    # --- FUNZIONE DI CONVERSIONE "INTELLIGENTE" ---
+    # Questa è la chiave per risolvere il problema:
+    # 1. Se vede la virgola (es: "1.628,64"), assume formato ITALIANO -> Toglie punti, cambia virgola in punto.
+    # 2. Se NON vede virgola ma vede punto (es: "1628.64"), assume formato STANDARD -> Non toglie nulla.
+    def normalizza_importo(val):
+        if pd.isna(val) or str(val).strip() == "": 
+            return 0.0
+        
+        # Se è già un numero puro, lo restituiamo subito
+        if isinstance(val, (float, int)):
+            return float(val)
+            
+        s = str(val).replace("€", "").strip()
+        
+        # LOGICA CONDIZIONALE:
+        if "," in s:
+            # C'è una virgola, quindi è sicuramente formato Europeo/Italiano (1.000,00 o 10,50)
+            # Rimuoviamo TUTTI i punti (separatori migliaia)
+            s = s.replace(".", "")
+            # Sostituiamo la virgola con il punto decimale
+            s = s.replace(",", ".")
+        else:
+            # NON c'è virgola. 
+            # Se c'è un punto (es. 1628.64), è già un decimale standard. NON RIMUOVERLO.
+            # Se non c'è nulla (es. 1628), va bene così.
+            pass
+            
+        try:
+            return float(s)
+        except:
+            return 0.0
     
     # --- GESTIONE STATO MODIFICA (Session State) ---
     if "edit_codice_commessa" not in st.session_state:
@@ -1089,29 +1121,22 @@ def render_dashboard():
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
-            st.warning(f"⚠️ Aggiornamento completato (Codice modificato o Record eliminato). Torno alla lista...")
+            st.warning(f"⚠️ Aggiornamento completato. Torno alla lista...")
             time.sleep(1.5)
             st.session_state["edit_codice_commessa"] = None
             st.rerun()
         
         return
 
-    # --- VISUALIZZAZIONE NORMALE (Se non stiamo modificando) ---
+    # --- VISUALIZZAZIONE NORMALE ---
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI ---
+        # --- 1. CALCOLO DATI KPI (usando la nuova funzione sicura) ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
-            def pulisci_valuta(valore_raw):
-                if not valore_raw: return 0.0
-                s = str(valore_raw).replace("€", "").strip()
-                if "," in s and "." in s: s = s.replace(".", "").replace(",", ".")
-                elif "," in s: s = s.replace(",", ".")
-                try: return float(s)
-                except: return 0.0
-
+            
             raw_json = row.get("Dati_JSON", "")
             if pd.isna(raw_json) or str(raw_json).strip() == "": 
                 return pd.Series([0.0, 0.0])
@@ -1121,15 +1146,18 @@ def render_dashboard():
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     dati_reali = item
+                    # Gestione strutture annidate se necessario
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
                                 dati_reali = v
                                 break 
+                    
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
-                        t_netto += pulisci_valuta(dati_reali.get("Importo netto €", 0))
-                        t_lordo += pulisci_valuta(dati_reali.get("Importo lordo €", 0))
+                        # QUI usiamo la funzione normalizza_importo
+                        t_netto += normalizza_importo(dati_reali.get("Importo netto €", 0))
+                        t_lordo += normalizza_importo(dati_reali.get("Importo lordo €", 0))
             except: 
                 return pd.Series([0.0, 0.0])
             return pd.Series([t_netto, t_lordo])
@@ -1161,6 +1189,8 @@ def render_dashboard():
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
+            
+            # Formattazione puramente visiva per le card
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
@@ -1251,29 +1281,10 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX IMPORTI ARCHIVIO ---
-        # Invece di formattare come testo (che causa errori), convertiamo in FLOAT puro
-        # e lasciamo che la NumberColumn lo visualizzi come Euro.
-        def converti_in_float_puro(val):
-            if pd.isna(val) or str(val).strip() == "": return 0.0
-            
-            # Se è già float o int, ok
-            if isinstance(val, (float, int)): return float(val)
-            
-            s = str(val).replace("€", "").strip()
-            # Logica Italiana: rimuovi punti migliaia, trasforma virgola in punto
-            # Esempio: "1.628,64" -> togli punto -> "1628,64" -> virgola punto -> 1628.64
-            if "," in s:
-                s = s.replace(".", "").replace(",", ".")
-            else:
-                # Se non c'è virgola ma ci sono punti (es 1.628), rimuovi i punti
-                if "." in s: s = s.replace(".", "")
-                
-            try: return float(s)
-            except: return 0.0
-
+        # --- FIX IMPORTI ARCHIVIO (Applicazione Logica Corretta) ---
         if "Totale Commessa" in df_to_edit.columns:
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(converti_in_float_puro)
+            # Applichiamo la funzione intelligente: converte le stringhe in float corretti
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(normalizza_importo)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
@@ -1282,7 +1293,8 @@ def render_dashboard():
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                # FIX: Usiamo NumberColumn con formato Euro. Legge il float 1628.64 e scrive € 1.628,64
+                # Qui usiamo NumberColumn con format. 
+                # Dato che df_to_edit["Totale Commessa"] è ora FLOAT PURO, la visualizzazione sarà corretta.
                 "Totale Commessa": st.column_config.NumberColumn("Totale Commessa", format="€ %.2f"), 
             },
             disabled=[c for c in actual_cols if c != "Elimina"], 
@@ -1479,6 +1491,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
