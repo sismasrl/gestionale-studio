@@ -1173,6 +1173,31 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
+        # --- FIX IMPORTI ARCHIVIO ---
+        # Questa funzione converte qualsiasi formato in ingresso (es. "€ 1.230,64" o float)
+        # e restituisce la stringa formattata corretta per la visualizzazione.
+        def pulisci_e_formatta_euro(val):
+            if pd.isna(val) or str(val).strip() == "": 
+                f_val = 0.0
+            else:
+                # Pulizia: Rimuovi simbolo € e spazi
+                s = str(val).replace("€", "").strip()
+                # Gestione formato europeo (1.000,00) -> python float (1000.00)
+                if "." in s and "," in s:
+                    s = s.replace(".", "").replace(",", ".")
+                elif "," in s:
+                    s = s.replace(",", ".")
+                try:
+                    f_val = float(s)
+                except:
+                    f_val = 0.0
+            
+            # Formattazione output: 1000.00 -> "€ 1.000,00"
+            return f"€ {f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        if "Totale Commessa" in df_to_edit.columns:
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(pulisci_e_formatta_euro)
+
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
@@ -1180,7 +1205,8 @@ def render_dashboard():
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                "Totale Commessa": st.column_config.NumberColumn(format="€ %.2f"),
+                # Usiamo TextColumn perché ora passiamo una stringa già formattata (es. € 1.230,64)
+                "Totale Commessa": st.column_config.TextColumn("Totale Commessa"), 
             },
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
@@ -1376,6 +1402,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
