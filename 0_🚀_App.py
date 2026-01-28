@@ -1046,43 +1046,79 @@ def render_clienti_page():
                     time.sleep(1)
                     st.rerun()
 
+import re # Assicurati che questo sia importato, serve per la pulizia potente
+
 # --- 5. DASHBOARD & IMPORT ---
 def render_dashboard():
     # Carica i dati aggiornati
+    # st.cache_data.clear() 
     df = carica_dati("Foglio1")
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
-    # --- FUNZIONE DI PULIZIA DATI GREZZI (Per i calcoli dei KPI) ---
-    def pulisci_numero_calcoli(val):
-        if pd.isna(val) or str(val).strip() == "": return 0.0
-        if isinstance(val, (float, int)): return float(val)
+    # --- FUNZIONE DI CONVERSIONE "NUCLEARE" ---
+    # Questa funzione forza l'interpretazione corretta:
+    # 1.628,64 -> diventa 1628.64 (Float)
+    # Poi lo formatteremo come testo per la visualizzazione
+    def normalizza_importo_aggressiva(val):
+        if pd.isna(val) or str(val).strip() == "": 
+            return 0.0
         
-        # Pulizia brutale per ottenere un float Python standard (es. 1628.64)
-        s = str(val).replace("€", "").strip()
-        # Se contiene virgola e punto, assumiamo formato IT (1.000,00) -> US (1000.00)
-        if "," in s and "." in s:
-            s = s.replace(".", "").replace(",", ".")
-        elif "," in s: # Solo virgola (1000,50) -> (1000.50)
-            s = s.replace(",", ".")
-        # Se c'è solo il punto (1000.50), va già bene per Python
+        # A. Se è già un numero, è facile.
+        if isinstance(val, (float, int)):
+            return float(val)
+            
+        s = str(val).strip()
+        
+        # B. Pulizia caratteri strani (tieni solo numeri, punti, virgole e meno)
+        s_clean = re.sub(r'[^\d,.-]', '', s)
+        
+        # C. LOGICA DI PARSING (Il cuore del fix)
+        # Dobbiamo capire se l'ultimo separatore è un punto o una virgola.
+        
+        # Contiamo cosa c'è
+        count_comma = s_clean.count(',')
+        count_point = s_clean.count('.')
         
         try:
-            return float(s)
+            # CASO 1: Formato Italiano classico (es. "1.628,64")
+            # C'è la virgola, e la virgola è DOPO l'ultimo punto (se c'è).
+            if ',' in s_clean:
+                if count_point > 0:
+                     last_point_index = s_clean.rfind('.')
+                     last_comma_index = s_clean.rfind(',')
+                     
+                     if last_comma_index > last_point_index:
+                         # È sicuramente italiano (punto migliaia, virgola decimali)
+                         s_clean = s_clean.replace(".", "")  # Via i punti
+                         s_clean = s_clean.replace(",", ".") # Virgola diventa punto
+                     else:
+                         # Caso strano (es. 1,200.50 stile US), ma raro qui.
+                         s_clean = s_clean.replace(",", "")
+                else:
+                    # C'è SOLO la virgola (es. "1628,64"). È decimale italiano.
+                    s_clean = s_clean.replace(",", ".")
+            
+            # CASO 2: Solo punti (es. "1.628.64" errore o "1.628")
+            # Se streamliti/excel ha salvato male
+            elif '.' in s_clean:
+                # Se c'è più di un punto (1.000.000), sono migliaia
+                if count_point > 1:
+                    s_clean = s_clean.replace(".", "")
+                else:
+                    # Un solo punto. Potrebbe essere 1628.64 (giusto) o 1.628 (mille)
+                    # Assumiamo sia formato Python standard (giusto)
+                    pass
+
+            return float(s_clean)
         except:
             return 0.0
 
-    # --- FUNZIONE DI FORMATTAZIONE VISIVA (Per la tabella) ---
-    # Questa converte il numero in TESTO PURO. Streamlit non potrà cambiarlo.
-    def forza_visualizzazione_testo(val):
-        val_float = pulisci_numero_calcoli(val)
-        
-        # 1. Formatta come stringa standard (1234.56)
-        # 2. Inverte i separatori: (1.234,56)
-        s_base = "{:,.2f}".format(val_float) # Esce: "1,628.64"
-        s_ita = s_base.replace(",", "X").replace(".", ",").replace("X", ".") # Esce: "1.628,64"
-        
-        return f"€ {s_ita}"
+    # --- FUNZIONE PER FORMATTAZIONE VISIVA FORZATA ---
+    def formatta_italiano_str(val):
+        f_val = normalizza_importo_aggressiva(val)
+        # Crea stringa "€ 1.628,64"
+        return "€ {:,.2f}".format(f_val).replace(",", "X").replace(".", ",").replace("X", ".")
 
     # --- GESTIONE STATO MODIFICA ---
     if "edit_codice_commessa" not in st.session_state:
@@ -1102,14 +1138,18 @@ def render_dashboard():
         if not record_corrente.empty:
             dati_commessa = record_corrente.iloc[0].to_dict()
             esito_salvataggio = render_commessa_form(dati_commessa)
+            
             if esito_salvataggio == True:
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
+            
             st.markdown("---")
-            if st.button("🔙 CHIUDI", key="btn_close_edit"):
+            if st.button("🔙 CHIUDI E TORNA ALLA DASHBOARD", key="btn_close_edit"):
                 st.session_state["edit_codice_commessa"] = None
                 st.rerun()
         else:
+            st.warning("⚠️ Record non trovato.")
+            time.sleep(1.5)
             st.session_state["edit_codice_commessa"] = None
             st.rerun()
         return
@@ -1118,12 +1158,15 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI (Usa i float reali) ---
+        # --- 1. CALCOLO DATI KPI ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
+            
             raw_json = row.get("Dati_JSON", "")
-            if pd.isna(raw_json) or str(raw_json).strip() == "": return pd.Series([0.0, 0.0])
+            if pd.isna(raw_json) or str(raw_json).strip() == "": 
+                return pd.Series([0.0, 0.0])
+
             try:
                 dati = json.loads(str(raw_json))
                 incassi = dati.get("incassi", [])
@@ -1132,28 +1175,35 @@ def render_dashboard():
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
-                                dati_reali = v; break 
+                                dati_reali = v
+                                break 
+                    
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
-                        t_netto += pulisci_numero_calcoli(dati_reali.get("Importo netto €", 0))
-                        t_lordo += pulisci_numero_calcoli(dati_reali.get("Importo lordo €", 0))
-            except: return pd.Series([0.0, 0.0])
+                        t_netto += normalizza_importo_aggressiva(dati_reali.get("Importo netto €", 0))
+                        t_lordo += normalizza_importo_aggressiva(dati_reali.get("Importo lordo €", 0))
+            except: 
+                return pd.Series([0.0, 0.0])
             return pd.Series([t_netto, t_lordo])
 
+        # --- 2. PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
-        # --- FILTRI ---
+        # --- 3. FILTRI ---
         anni_disponibili = sorted(df["Anno"].unique().tolist(), reverse=True)
         if 0 in anni_disponibili: anni_disponibili.remove(0)
         anni_opts = ["TOTALE"] + [str(x) for x in anni_disponibili]
-        c_filt, c_void = st.columns([1, 3])
-        sel_anno_str = c_filt.selectbox("Filtra Anno:", anni_opts)
         
-        if sel_anno_str != "TOTALE": df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
-        else: df_filtered = df.copy()
+        c_filt, c_void = st.columns([1, 3])
+        sel_anno_str = c_filt.selectbox("Filtra Dashboard e Archivio per Anno:", anni_opts)
+        
+        if sel_anno_str != "TOTALE":
+            df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
+        else:
+            df_filtered = df.copy()
 
-        # --- KPI CARDS (VISUALIZZAZIONE) ---
+        # --- 4. KPI CARDS ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -1161,68 +1211,137 @@ def render_dashboard():
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
-            # Usiamo la funzione di formattazione TESTUALE anche qui per coerenza
-            t_n = forza_visualizzazione_testo(d_s['_Fatt_Netto_Calc'].sum()).replace("€ ", "")
-            t_l = forza_visualizzazione_testo(d_s['_Fatt_Lordo_Calc'].sum()).replace("€ ", "")
+            tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
+            tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            with col:
-                st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:15px; border-radius:6px; text-align:center; color:white;">
-                    <div style="font-weight:bold; font-size:16px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">{nome}</div>
-                    <div style="display:flex; justify-content:space-around; margin-top:10px;">
-                        <div><div style="font-size:10px;">NETTO</div><div style="font-size:18px; font-weight:bold;">€ {t_n}</div></div>
-                        <div><div style="font-size:10px;">LORDO</div><div style="font-size:18px;">€ {t_l}</div></div>
+            # Usa la funzione di formattazione stringa per le card
+            fmt_netto = formatta_italiano_str(tot_netto_settore).replace("€ ", "")
+            fmt_lordo = formatta_italiano_str(tot_lordo_settore).replace("€ ", "")
+            
+            card_html = f"""
+            <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
+                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
+                    {nome}
+                </div>
+                <div style="display: flex; justify-content: space-around; align-items: center;">
+                    <div style="text-align:center;">
+                        <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
+                        <div style="font-size:20px; font-weight:bold;">€ {fmt_netto}</div>
+                    </div>
+                    <div style="width:1px; height:30px; background-color:rgba(255,255,255,0.3);"></div>
+                    <div style="text-align:center;">
+                        <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
+                        <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="font-size:11px; color:#ccece6; margin-top:10px;">
+                    {len(d_s)} Commesse ({sel_anno_str})
+                </div>
+            </div>
+            """
+            with col: st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("---")
+    st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
+    
+    # --- SELETTORE MODIFICA ---
+    if not df.empty:
+        opts = []
+        for _, row in df.iterrows():
+             nome_show = str(row["Nome Commessa"])
+             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
+             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
+        
+        st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto.")
+        st.selectbox("Seleziona per Modifica:", [""] + opts, key="trigger_selezione_commessa", on_change=attiva_modifica)
+
+    st.markdown("<br>", unsafe_allow_html=True)
     
     # --- GESTIONE ARCHIVIO ---
-    c_title, c_actions = st.columns([1, 1])
-    with c_title: st.markdown("### ARCHIVIO")
-    with c_actions:
-        # Codice export/import (omesso per brevità, è uguale a prima)
-        pass 
+    if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-    # --- TABELLA GESTIONALE (IL PUNTO CRITICO) ---
+    c_title, c_actions = st.columns([1, 1], gap="large")
+    with c_title: 
+        st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
+        if not df.empty:
+            c_btn1, c_btn2, c_rest = st.columns([0.4, 0.4, 0.2])
+            with c_btn1:
+                if st.button("Seleziona Tutto", use_container_width=True):
+                    st.session_state["select_all_state"] = True
+                    st.rerun()
+            with c_btn2:
+                if st.button("Deseleziona", use_container_width=True):
+                    st.session_state["select_all_state"] = False
+                    st.rerun()
+
+    with c_actions:
+        tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
+        with tab_backup:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
+                df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
+            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+        with tab_import:
+            st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
+            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa"])
+            buf_tpl = io.BytesIO()
+            with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
+            st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
+            uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
+            if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
+                importa_excel_batch(uploaded_file)
+
+    # --- TABELLA GESTIONALE ---
     if not df.empty:
         df_to_edit = df_filtered.copy()
         
-        # 1. Creiamo la colonna Elimina
-        if "Elimina" not in df_to_edit.columns: df_to_edit.insert(0, "Elimina", False)
-        
-        # 2. FIX FORMATTAZIONE:
-        # Convertiamo la colonna in STRINGA (Object) esplicita. 
-        # Questo impedisce a Pandas/Streamlit di trattarla come numero.
+        if "Elimina" not in df_to_edit.columns:
+             df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
+        else:
+             df_to_edit["Elimina"] = st.session_state["select_all_state"]
+
+        cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
+        df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
+
+        # --- FIX ASSOLUTO: Convertiamo TUTTO in TESTO formattato ---
         if "Totale Commessa" in df_to_edit.columns:
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(forza_visualizzazione_testo)
-            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].astype(str) # Forza bruta tipo
+            # 1. Applichiamo la formattazione stringa DIRETTAMENTE sui dati
+            # Questo trasforma 1628.64 -> "€ 1.628,64"
+            # Streamlit non potrà più sbagliarsi perché leggerà una stringa, non un numero.
+            df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(formatta_italiano_str)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
+        # Configurazione Tabella
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
-                "Elimina": st.column_config.CheckboxColumn("❌", width="small"),
-                # TextColumn è fondamentale: dice a Streamlit "non provare a capire cos'è, mostralo e basta"
+                "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
+                
+                # USIAMO TextColumn: Streamlit mostrerà ESATTAMENTE la stringa che abbiamo creato noi.
+                # Nessuna interpretazione automatica.
                 "Totale Commessa": st.column_config.TextColumn(
                     "Totale Commessa",
-                    help="Importo fisso",
-                    width="medium"
+                    help="Importo totale (Formato Italiano Fisso)",
+                    width="small"
                 ), 
             },
+            # Disabilitiamo l'editing della colonna totale perché ora è testo
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
+            height=500,
             key="archive_editor"
         )
-        
-        # Logica eliminazione (uguale a prima)
-        if edited_df["Elimina"].sum() > 0:
-            if st.button("🗑️ ELIMINA SELEZIONATI", type="primary"):
-                 elimina_record_batch(edited_df[edited_df["Elimina"]==True]["Codice"].tolist(), "Foglio1", "Codice")
+
+        rows_to_delete = edited_df[edited_df["Elimina"] == True]
+        if not rows_to_delete.empty:
+            st.error(f"⚠️ ATTENZIONE: Hai selezionato {len(rows_to_delete)} commesse per l'ELIMINAZIONE.")
+            if st.button(f"🗑️ CONFERMA CANCELLAZIONE DI {len(rows_to_delete)} COMMESSE", type="primary"):
+                codici_da_eliminare = rows_to_delete["Codice"].tolist()
+                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
                 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1404,6 +1523,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
