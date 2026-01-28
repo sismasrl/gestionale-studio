@@ -616,7 +616,7 @@ def render_commessa_form(data=None):
 
     st.markdown("---")
     
-    # --- SALVATAGGIO: LOGICA CORRECTA (SALVA NUOVO -> POI CANCELLA VECCHIO) ---
+    # --- SALVATAGGIO: LOGICA CORRETTA (SALVA NUOVO -> POI CANCELLA VECCHIO) ---
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
@@ -660,10 +660,9 @@ def render_commessa_form(data=None):
                 # Poi CANCELLIAMO il vecchio record
                 elimina_record(val_codice_originale, "Foglio1", "Codice")
                 
-                # Infine ricarichiamo (utile se elimina_record non lo fa da solo)
                 st.success(f"Commessa aggiornata da {val_codice_originale} a {codice_finale}")
-                time.sleep(1)
-                st.rerun()
+                time.sleep(1) # Pausa per leggere il messaggio
+                return True   # <--- SEGNALE ALLA DASHBOARD DI CHIUDERE
 
             else:
                 # 2. CASO: UPDATE NORMALE O NUOVA COMMESSA
@@ -672,11 +671,23 @@ def render_commessa_form(data=None):
                 
                 if is_edit: 
                     st.success("Commessa aggiornata!")
-                    st.rerun()
+                else:
+                    st.success("Nuova commessa creata!")
+                
+                time.sleep(1) # Pausa per leggere il messaggio
+                return True   # <--- SEGNALE ALLA DASHBOARD DI CHIUDERE
 
     if is_edit:
         with st.expander("⚠️ ZONA PERICOLO"):
-            if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): elimina_record(codice_finale, "Foglio1", "Codice")
+            if st.button("ELIMINA DEFINITIVAMENTE", key="btn_del"): 
+                elimina_record(codice_finale, "Foglio1", "Codice")
+                st.success("Commessa eliminata.")
+                time.sleep(1)
+                return True # Chiude anche in caso di eliminazione
+
+    # IMPORTANTE: Se non si preme nulla, ritorna False (o None) così la finestra resta aperta
+    return False
+
 # --- 4. CLIENTI PAGE (DEFINIZIONE FUNZIONE) ---
 def render_clienti_page():
     st.markdown("<h2 style='text-align: center;'>ARCHIVIO CLIENTI</h2>", unsafe_allow_html=True)
@@ -1301,6 +1312,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
