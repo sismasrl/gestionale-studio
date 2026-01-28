@@ -1054,27 +1054,27 @@ def render_dashboard():
     
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
-    # --- FUNZIONE DI CONVERSIONE BLINDATA ---
+    # --- FUNZIONE DI CONVERSIONE (APPROCCIO "FLOAT PURO") ---
     def normalizza_importo(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
         
-        # 1. Se è già un numero (float o int), è PERFETTO. Non toccarlo.
+        # 1. Se è già un numero (float o int), lo restituiamo subito.
         if isinstance(val, (float, int)):
             return float(val)
             
+        # 2. Pulizia base stringa
         s = str(val).replace("€", "").strip()
         
-        # 2. CASO ITALIANO (es. "1.628,64")
-        # Se c'è una virgola, assumiamo sia il separatore decimale.
+        # 3. Logica Condizionale "Difensiva":
+        # Se c'è una virgola, è sicuramente formato italiano (es. 1.200,50)
+        # Solo in questo caso rimuoviamo i punti delle migliaia.
         if "," in s:
-            s = s.replace(".", "")  # Via i punti migliaia
-            s = s.replace(",", ".") # Virgola diventa punto
-            return float(s)
-            
-        # 3. CASO STANDARD/PYTHON (es. "1628.64")
-        # Se NON c'è virgola, ma c'è il punto, è già corretto.
-        # L'errore prima era rimuovere questo punto. ORA LO LASCIAMO.
+            s = s.replace(".", "")  # Via i punti (1.200 -> 1200)
+            s = s.replace(",", ".") # Virgola diventa punto (1200,50 -> 1200.50)
+        
+        # 4. Tentativo di conversione finale
+        # Se non c'era la virgola, il punto decimale (1628.64) viene preservato.
         try:
             return float(s)
         except:
@@ -1175,7 +1175,8 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Formattazione per la visualizzazione nelle card (solo estetica)
+            # Formattazione SOLO VISIVA per le card (HTML)
+            # Qui trasformiamo i float in stringa italiana SOLO per l'occhio umano, non per i calcoli.
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
@@ -1267,7 +1268,8 @@ def render_dashboard():
 
         # --- FIX IMPORTI ARCHIVIO (LA PARTE CRITICA) ---
         if "Totale Commessa" in df_to_edit.columns:
-            # Qui applichiamo la funzione intelligente che NON rompe i numeri già corretti
+            # Applichiamo la funzione normalizza_importo che ora è SICURA.
+            # Se trova "1628.64", lo lascia float. Se trova "1.628,64", lo converte.
             df_to_edit["Totale Commessa"] = df_to_edit["Totale Commessa"].apply(normalizza_importo)
 
         cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Commessa"]
@@ -1278,8 +1280,13 @@ def render_dashboard():
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("❌ Elimina", help="Spunta per ELIMINARE definitivamente", default=False),
-                # Streamlit visualizzerà il float (es. 1628.64) come € 1.628,64
-                "Totale Commessa": st.column_config.NumberColumn("Totale Commessa", format="€ %.2f"), 
+                # Streamlit visualizzerà il float (es. 1628.64) formattato come € 1.628,64
+                # Ma il valore sottostante resta un numero puro.
+                "Totale Commessa": st.column_config.NumberColumn(
+                    "Totale Commessa", 
+                    format="€ %.2f",
+                    step=0.01  # Aggiunto step per precisione decimale nell'editor
+                ), 
             },
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
@@ -1475,6 +1482,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
