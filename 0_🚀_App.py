@@ -881,12 +881,12 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. FUNZIONE PER CALCOLARE FATTURATO NETTO E LORDO DAL JSON (SOLO PER KPI) ---
+        # --- 1. CALCOLO DATI KPI (Netto e Lordo) ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
             
-            # Helper per pulire la valuta
+            # Helper interno per pulire la valuta
             def pulisci_valuta(valore_raw):
                 if not valore_raw: return 0.0
                 s = str(valore_raw).replace("€", "").strip()
@@ -925,7 +925,7 @@ def render_dashboard():
 
         # --- 2. PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        # Calcoliamo due colonne: Netto e Lordo
+        # Calcoliamo le colonne temporanee
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
         # --- 3. FILTRI ---
@@ -942,7 +942,7 @@ def render_dashboard():
         else:
             df_filtered = df.copy()
 
-        # --- 4. KPI CARDS ---
+        # --- 4. KPI CARDS (HTML CORRETTO) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -954,32 +954,35 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Formattazione
             fmt_netto = f"{tot_netto_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             fmt_lordo = f"{tot_lordo_settore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            with col:
-                st.markdown(f"""
-                <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center;">
-                    <div style="color:#FFF; font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">{nome}</div>
-                    
-                    <div style="display: flex; justify-content: space-around; align-items: center;">
-                        <div style="text-align:center;">
-                            <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
-                            <div style="font-size:20px; color:white; font-weight:bold;">€ {fmt_netto}</div>
-                        </div>
-                        
-                        <div style="width:1px; height:30px; background-color:rgba(255,255,255,0.3);"></div>
-
-                        <div style="text-align:center;">
-                            <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
-                            <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
-                        </div>
-                    </div>
-                    
-                    <div style="font-size:11px; color:#ccece6; margin-top:10px;">{len(d_s)} Commesse ({sel_anno_str})</div>
+            # --- FIX VISUALIZZAZIONE HTML ---
+            # Creiamo la stringa HTML in una variabile per evitare errori di indentazione
+            card_html = f"""
+            <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
+                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
+                    {nome}
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="display: flex; justify-content: space-around; align-items: center;">
+                    <div style="text-align:center;">
+                        <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
+                        <div style="font-size:20px; font-weight:bold;">€ {fmt_netto}</div>
+                    </div>
+                    <div style="width:1px; height:30px; background-color:rgba(255,255,255,0.3);"></div>
+                    <div style="text-align:center;">
+                        <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
+                        <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
+                    </div>
+                </div>
+                <div style="font-size:11px; color:#ccece6; margin-top:10px;">
+                    {len(d_s)} Commesse ({sel_anno_str})
+                </div>
+            </div>
+            """
+            
+            with col:
+                st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
@@ -1011,7 +1014,6 @@ def render_dashboard():
         with tab_backup:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # Rimuoviamo colonne tecniche prima dell'export
                 cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
                 df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
             st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
@@ -1040,7 +1042,6 @@ def render_dashboard():
         df_to_edit = df_filtered.copy()
         df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         
-        # Nascondiamo le colonne di calcolo interne dalla tabella editabile
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
@@ -1248,6 +1249,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
