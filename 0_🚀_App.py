@@ -799,38 +799,85 @@ def render_clienti_page():
     with c_list:
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
         
-        # --- SEZIONE IMPORT / EXPORT ---
-        with st.expander("📂 IMPORT / EXPORT EXCEL", expanded=False):
+        # --- SEZIONE IMPORT / EXPORT AGGIORNATA ---
+        with st.expander("📂 IMPORT / EXPORT MASSIVO (Excel)", expanded=False):
             k1, k2 = st.columns(2)
-            # EXPORT
-            with k1:
-                st.markdown("**Esporta Rubrica**")
-                if not df.empty:
-                    buffer_cli = io.BytesIO()
-                    with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
-                        df.to_excel(writer_cli, index=False, sheet_name='Rubrica')
-                    st.download_button("📥 SCARICA EXCEL", data=buffer_cli, file_name=f"Rubrica_Clienti_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
-                else:
-                    st.info("Nessun dato.")
+            
+            # Definiamo le colonne esatte per garantire che il template sia corretto
+            colonne_export = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Contatto_SISMA", "Settore", "Attivo", "Note"]
 
-            # IMPORT
+            # EXPORT: Scarica dati o template vuoto
+            with k1:
+                st.markdown("**1. Scarica Excel**")
+                st.caption("Scarica la lista attuale o un modello vuoto per aggiungere nuovi clienti.")
+                
+                # Creazione DataFrame per Export
+                if not df.empty:
+                    df_export = df.copy()
+                    # Assicuriamoci che tutte le colonne esistano nel DF, altrimenti le creiamo vuote
+                    for col in colonne_export:
+                        if col not in df_export.columns:
+                            df_export[col] = ""
+                    df_export = df_export[colonne_export] # Riordiniamo le colonne
+                else:
+                    # Crea un dataframe vuoto solo con le intestazioni (Template)
+                    df_export = pd.DataFrame(columns=colonne_export)
+
+                buffer_cli = io.BytesIO()
+                with pd.ExcelWriter(buffer_cli, engine='xlsxwriter') as writer_cli:
+                    df_export.to_excel(writer_cli, index=False, sheet_name='Clienti')
+                
+                st.download_button(
+                    label="📥 SCARICA FILE EXCEL",
+                    data=buffer_cli,
+                    file_name=f"Clienti_Export_{date.today()}.xlsx",
+                    mime="application/vnd.ms-excel",
+                    use_container_width=True
+                )
+
+            # IMPORT: Carica dati
             with k2:
-                st.markdown("**Importa Clienti**")
+                st.markdown("**2. Importa Excel**")
+                st.caption("Carica il file compilato per inserire o aggiornare i clienti.")
+                
                 uploaded_file = st.file_uploader("Carica file .xlsx", type=["xlsx"], label_visibility="collapsed")
-                if uploaded_file is not None and st.button("CARICA DATI NEL DB", use_container_width=True):
-                    try:
-                        df_new = pd.read_excel(uploaded_file).fillna("")
-                        count = 0
-                        for index, row in df_new.iterrows():
-                            rec_import = row.to_dict()
-                            if "Denominazione" in rec_import and rec_import["Denominazione"]:
-                                salva_record(rec_import, "Clienti", "Denominazione", "update")
-                                count += 1
-                        st.success(f"Importati {count} clienti!")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore: {e}")
+                
+                if uploaded_file is not None:
+                    if st.button("🔄 AVVIA IMPORTAZIONE", use_container_width=True):
+                        try:
+                            # Leggiamo tutto come stringa (dtype=str) per non perdere zeri iniziali o formattazioni
+                            df_new = pd.read_excel(uploaded_file, dtype=str).fillna("")
+                            
+                            # Verifica colonne minime
+                            if "Denominazione" not in df_new.columns:
+                                st.error("Errore: Il file non contiene la colonna 'Denominazione'.")
+                            else:
+                                count = 0
+                                progress_bar = st.progress(0)
+                                total_rows = len(df_new)
+                                
+                                for index, row in df_new.iterrows():
+                                    rec_import = row.to_dict()
+                                    # Pulizia base dei dati
+                                    if rec_import.get("Denominazione") and str(rec_import["Denominazione"]).strip() != "":
+                                        # Default Attivo a TRUE se mancante
+                                        if "Attivo" not in rec_import or rec_import["Attivo"] == "":
+                                            rec_import["Attivo"] = "TRUE"
+                                        
+                                        salva_record(rec_import, "Clienti", "Denominazione", "update")
+                                        count += 1
+                                    
+                                    # Aggiorna barra progresso
+                                    if total_rows > 0:
+                                        progress_bar.progress((index + 1) / total_rows)
+
+                                time.sleep(0.5)
+                                st.success(f"✅ Import completato: {count} clienti elaborati!")
+                                time.sleep(1.5)
+                                st.rerun()
+                                
+                        except Exception as e:
+                            st.error(f"Errore durante l'importazione: {e}")
 
         st.divider()
 
@@ -841,7 +888,6 @@ def render_clienti_page():
             df_view["Attivo"] = df_view["Attivo"].astype(str).str.upper() == "TRUE"
             
             # Aggiungiamo colonna Seleziona
-            # Se c'è un cliente selezionato, mettiamo True su quella riga
             df_view.insert(0, "Seleziona", False)
             if st.session_state["cliente_selezionato"]:
                 df_view.loc[df_view["Denominazione"] == st.session_state["cliente_selezionato"], "Seleziona"] = True
@@ -865,23 +911,15 @@ def render_clienti_page():
             )
 
             # --- LOGICA DI SELEZIONE DALLA TABELLA ---
-            # Cerchiamo le righe dove Seleziona è True
             selection = edited_df[edited_df["Seleziona"] == True]
             
             if not selection.empty:
-                # Prendiamo l'ultima selezione fatta (o la prima della lista)
                 selected_name = selection.iloc[0]["Denominazione"]
-                
-                # Se la selezione è diversa dallo stato attuale, aggiorniamo e ricarichiamo
                 if selected_name != st.session_state["cliente_selezionato"]:
                     st.session_state["cliente_selezionato"] = selected_name
                     st.rerun()
             
-            # Se l'utente ha deselezionato tutto dalla tabella, ma avevamo un cliente selezionato
             elif st.session_state["cliente_selezionato"] is not None and selection.empty:
-                 # Opzionale: se si vuole che deselezionando dalla tabella si pulisca il form
-                 # st.session_state["cliente_selezionato"] = None
-                 # st.rerun()
                  pass
 
 # --- 5. DASHBOARD & IMPORT ---
@@ -1300,6 +1338,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
