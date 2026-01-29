@@ -1210,7 +1210,48 @@ def render_dashboard():
     # --- TABELLA GESTIONALE ---
     if not df.empty:
         df_to_edit = df_filtered.copy()
+
+        # --- LOGICA COLORI / STATI (SEMAFORO) ---
+        def calcola_stato_colore(row):
+            # 1. Recupera Utile Netto (Priorità: ROSSO)
+            try:
+                utile = pulisci_per_calcoli(row.get("Utile Netto", 0))
+            except:
+                utile = 0.0
+            
+            if utile <= 0:
+                return "🔴" # Utili negativi o zero
+
+            # 2. Controllo Pagamenti Pendenti nel JSON (Priorità: ARANCIONE)
+            # Cerca in Soci, Collaboratori, Spese se c'è "Da pagare"
+            try:
+                raw_json = row.get("Dati_JSON", "{}")
+                if pd.isna(raw_json) or str(raw_json).strip() == "":
+                    dati = {}
+                else:
+                    dati = json.loads(str(raw_json))
+                
+                # Liste da controllare
+                for cat in ["soci", "collab", "spese"]:
+                    items = dati.get(cat, [])
+                    for it in items:
+                        if isinstance(it, dict) and it.get("Stato") == "Da pagare":
+                            return "🟠" # Ci sono pagamenti in sospeso
+            except:
+                pass # Se errore nel json, ignora e procedi
+
+            # 3. Controllo Stato Commessa (Priorità: GIALLO)
+            stato_commessa = str(row.get("Stato", "")).strip()
+            if stato_commessa in ["Aperta", "In Attesa"]:
+                return "🟡" # Commessa aperta/attesa
+            
+            # Default (Tutto pagato, utile positivo, chiusa/consegnata)
+            return "🟢"
+
+        # Applichiamo la logica riga per riga
+        df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
         
+        # --- GESTIONE CHECKBOX ELIMINA ---
         if "Elimina" not in df_to_edit.columns:
              df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
         else:
@@ -1220,39 +1261,46 @@ def render_dashboard():
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
         # --- FIX VISIVO & COLONNE CALCOLATE ---
-        # 1. Creiamo le due colonne Totale Netto e Totale Lordo prendendo i dati dai calcoli KPI
         if "_Fatt_Netto_Calc" in df_filtered.columns:
              df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
         
         if "_Fatt_Lordo_Calc" in df_filtered.columns:
              df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
 
-        # 2. Convertiamo entrambe in TESTO FORMATTATO (Decimali fissi e stile €)
+        # Convertiamo entrambe in TESTO FORMATTATO
         for col_name in ["Totale Netto", "Totale Lordo"]:
             if col_name in df_to_edit.columns:
                 df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo)
                 df_to_edit[col_name] = df_to_edit[col_name].astype(str)
 
-        # Definiamo le colonne da mostrare nell'ordine desiderato
-        cols_to_show = ["Elimina", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
+        # Definiamo le colonne da mostrare (Aggiunto "🚦 STATO" in seconda posizione)
+        cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
+
+        # Legenda colori sopra la tabella
+        st.caption("LEGENDA STATI: 🔴 Utile ≤ 0 | 🟠 Pagamenti 'Da pagare' presenti | 🟡 Commessa Aperta/In Attesa | 🟢 Completata & Utile OK")
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
-                "Elimina": st.column_config.CheckboxColumn("❌ Elimina", default=False, width="small"),
+                "Elimina": st.column_config.CheckboxColumn("Del", default=False, width="small"),
+                "🚦 STATO": st.column_config.Column(
+                    "Info", 
+                    width="small", 
+                    help="🔴: Utile negativo/nullo\n🟠: Costi 'Da pagare' presenti\n🟡: Stato Aperta/Attesa\n🟢: OK"
+                ),
                 "Totale Netto": st.column_config.TextColumn(
                     "Totale Netto",
-                    help="Somma Netta calcolata dagli importi della scheda (Fissa 2 decimali)",
+                    help="Somma Netta calcolata dagli importi della scheda",
                     width="medium"
                 ),
                 "Totale Lordo": st.column_config.TextColumn(
                     "Totale Lordo",
-                    help="Somma Lorda calcolata dagli importi della scheda (Fissa 2 decimali)",
+                    help="Somma Lorda calcolata dagli importi della scheda",
                     width="medium"
                 ),
             },
-            # Disabilitiamo edit su tutte le colonne tranne "Elimina"
+            # Disabilitiamo edit su tutte tranne "Elimina"
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1447,6 +1495,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
