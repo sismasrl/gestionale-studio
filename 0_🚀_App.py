@@ -718,7 +718,7 @@ def render_commessa_form(data=None):
                 # Se vuoi il netto reale, dovresti sottrarre anche val_portatore e val_societa.
                 val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
                 color = "#ff4b4b" if val_utili < 0 else "#ffffff"
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>MARGINE</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     
@@ -1447,6 +1447,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
