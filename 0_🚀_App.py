@@ -1213,17 +1213,18 @@ def render_dashboard():
 
         # --- LOGICA COLORI / STATI (SEMAFORO) ---
         def calcola_stato_colore(row):
-            # 1. Recupera Utile Netto (Priorità: ROSSO)
+            # 🔴 PRIORITÀ 1 (ROSSO): Utili <= 0
+            # Controlla il valore salvato nella colonna "Utile Netto"
             try:
                 utile = pulisci_per_calcoli(row.get("Utile Netto", 0))
             except:
                 utile = 0.0
             
             if utile <= 0:
-                return "🔴" # Utili negativi o zero
+                return "🔴" 
 
-            # 2. Controllo Pagamenti Pendenti nel JSON (Priorità: ARANCIONE)
-            # Cerca in Soci, Collaboratori, Spese se c'è "Da pagare"
+            # 🟣 PRIORITÀ 2 (FUCSIA): Pagamenti "Da pagare"
+            # Apre il JSON e controlla Soci, Collaboratori, Spese
             try:
                 raw_json = row.get("Dati_JSON", "{}")
                 if pd.isna(raw_json) or str(raw_json).strip() == "":
@@ -1231,21 +1232,22 @@ def render_dashboard():
                 else:
                     dati = json.loads(str(raw_json))
                 
-                # Liste da controllare
+                # Liste da controllare nel JSON
                 for cat in ["soci", "collab", "spese"]:
                     items = dati.get(cat, [])
                     for it in items:
+                        # Se trova anche solo un elemento "Da pagare", restituisce Fucsia
                         if isinstance(it, dict) and it.get("Stato") == "Da pagare":
-                            return "🟠" # Ci sono pagamenti in sospeso
+                            return "🟣" 
             except:
-                pass # Se errore nel json, ignora e procedi
+                pass # Se errore nel json, ignora e procedi al prossimo controllo
 
-            # 3. Controllo Stato Commessa (Priorità: GIALLO)
+            # 🟡 PRIORITÀ 3 (GIALLO): Stato Commessa Aperta o In Attesa
             stato_commessa = str(row.get("Stato", "")).strip()
             if stato_commessa in ["Aperta", "In Attesa"]:
-                return "🟡" # Commessa aperta/attesa
+                return "🟡" 
             
-            # Default (Tutto pagato, utile positivo, chiusa/consegnata)
+            # 🟢 DEFAULT (VERDE): Tutto pagato, utile positivo, stato chiuso/consegnato
             return "🟢"
 
         # Applichiamo la logica riga per riga
@@ -1273,12 +1275,12 @@ def render_dashboard():
                 df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo)
                 df_to_edit[col_name] = df_to_edit[col_name].astype(str)
 
-        # Definiamo le colonne da mostrare (Aggiunto "🚦 STATO" in seconda posizione)
+        # Definiamo le colonne da mostrare 
         cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-        # Legenda colori sopra la tabella
-        st.caption("LEGENDA STATI: 🔴 Utile ≤ 0 | 🟠 Pagamenti 'Da pagare' presenti | 🟡 Commessa Aperta/In Attesa | 🟢 Completata & Utile OK")
+        # Legenda colori aggiornata
+        st.caption("LEGENDA: 🔴 Utile ≤ 0 (Critico) | 🟣 Pagamenti 'Da pagare' (Amministrativo) | 🟡 Commessa Aperta/Attesa (Operativo) | 🟢 Completata & Utile OK")
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
@@ -1287,7 +1289,7 @@ def render_dashboard():
                 "🚦 STATO": st.column_config.Column(
                     "Info", 
                     width="small", 
-                    help="🔴: Utile negativo/nullo\n🟠: Costi 'Da pagare' presenti\n🟡: Stato Aperta/Attesa\n🟢: OK"
+                    help="🔴: Utile negativo/nullo\n🟣: Ci sono pagamenti in sospeso (Soci/Collab/Spese)\n🟡: Commessa non ancora chiusa\n🟢: Tutto OK"
                 ),
                 "Totale Netto": st.column_config.TextColumn(
                     "Totale Netto",
@@ -1495,6 +1497,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
