@@ -1038,13 +1038,7 @@ def render_dashboard():
     if "edit_codice_commessa" not in st.session_state:
         st.session_state["edit_codice_commessa"] = None
 
-    def attiva_modifica():
-        selezione = st.session_state.get("trigger_selezione_commessa")
-        if selezione:
-            st.session_state["edit_codice_commessa"] = selezione.split(" | ")[0]
-            st.session_state["trigger_selezione_commessa"] = ""
-
-    # --- MODALITÀ MODIFICA ---
+    # --- MODALITÀ MODIFICA (SCHEDA APERTA) ---
     if st.session_state["edit_codice_commessa"] is not None:
         codice_corrente = st.session_state["edit_codice_commessa"]
         record_corrente = df[df["Codice"].astype(str) == str(codice_corrente)]
@@ -1068,7 +1062,7 @@ def render_dashboard():
             st.rerun()
         return
 
-    # --- VISUALIZZAZIONE NORMALE ---
+    # --- VISUALIZZAZIONE DASHBOARD / TABELLA ---
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
@@ -1086,7 +1080,6 @@ def render_dashboard():
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     dati_reali = item
-                    # Logica per trovare i dati annidati se necessario
                     if isinstance(item, dict) and "Stato" not in item:
                         for k, v in item.items():
                             if isinstance(v, dict) and "Stato" in v:
@@ -1094,7 +1087,6 @@ def render_dashboard():
                                 break 
                     
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
-                    # Somma solo se fatturato
                     if "fatturato" in stato:
                         t_netto += pulisci_per_calcoli(dati_reali.get("Importo netto €", 0))
                         t_lordo += pulisci_per_calcoli(dati_reali.get("Importo lordo €", 0))
@@ -1156,149 +1148,146 @@ def render_dashboard():
             """
             with col: st.markdown(card_html, unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
-    
-    # --- SELETTORE MODIFICA ---
-    if not df.empty:
-        opts = []
-        for _, row in df.iterrows():
-             nome_show = str(row["Nome Commessa"])
-             cli_show = str(row["Cliente"]) if row["Cliente"] else "N/D"
-             opts.append(f"{row['Codice']} | {cli_show} - {nome_show}")
-        
-        st.info("✏️ Per **MODIFICARE** una commessa, selezionala dal menu qui sotto.")
-        st.selectbox("Seleziona per Modifica:", [""] + opts, key="trigger_selezione_commessa", on_change=attiva_modifica)
+        st.markdown("---")
+        st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
+        # (NOTA: Rimosso il selettore modifica dropdown)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # --- GESTIONE ARCHIVIO ---
-    if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
+        # --- GESTIONE ARCHIVIO ---
+        if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
 
-    c_title, c_actions = st.columns([1, 1], gap="large")
-    with c_title: 
-        st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
+        c_title, c_actions = st.columns([1, 1], gap="large")
+        with c_title: 
+            st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
+            if not df.empty:
+                c_btn1, c_btn2, c_rest = st.columns([0.4, 0.4, 0.2])
+                with c_btn1:
+                    if st.button("Seleziona Tutto", use_container_width=True):
+                        st.session_state["select_all_state"] = True
+                        st.rerun()
+                with c_btn2:
+                    if st.button("Deseleziona", use_container_width=True):
+                        st.session_state["select_all_state"] = False
+                        st.rerun()
+
+        with c_actions:
+            tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
+            with tab_backup:
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
+                    df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
+                st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+            with tab_import:
+                st.info("Formato richiesto: Codice, Anno, Nome Commessa...", icon="ℹ️")
+                template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa"])
+                buf_tpl = io.BytesIO()
+                with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
+                st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
+                uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
+                if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
+                    importa_excel_batch(uploaded_file)
+
+        # --- TABELLA GESTIONALE ---
         if not df.empty:
-            c_btn1, c_btn2, c_rest = st.columns([0.4, 0.4, 0.2])
-            with c_btn1:
-                if st.button("Seleziona Tutto", use_container_width=True):
-                    st.session_state["select_all_state"] = True
-                    st.rerun()
-            with c_btn2:
-                if st.button("Deseleziona", use_container_width=True):
-                    st.session_state["select_all_state"] = False
-                    st.rerun()
+            df_to_edit = df_filtered.copy()
 
-    with c_actions:
-        tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
-        with tab_backup:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
-                df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
-            st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
-        with tab_import:
-            st.info("Formato richiesto: Codice, Anno, Nome Commessa, Cliente, Totale Commessa...", icon="ℹ️")
-            template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa"])
-            buf_tpl = io.BytesIO()
-            with pd.ExcelWriter(buf_tpl, engine='xlsxwriter') as writer: template_df.to_excel(writer, index=False, sheet_name='Template')
-            st.download_button("1. Scarica Modello Vuoto", data=buf_tpl, file_name="Template_SISMA.xlsx", use_container_width=True)
-            uploaded_file = st.file_uploader("2. Carica Excel compilato", type=["xlsx", "xls"])
-            if uploaded_file and st.button("AVVIA IMPORTAZIONE", type="primary", use_container_width=True):
-                importa_excel_batch(uploaded_file)
+            # --- LOGICA COLORI / STATI ---
+            def calcola_stato_colore(row):
+                # 🟣 PRIORITÀ 1: FUCSIA (Pagamenti Pendenti)
+                try:
+                    raw_json = row.get("Dati_JSON", "{}")
+                    if not pd.isna(raw_json) and str(raw_json).strip() != "":
+                        dati = json.loads(str(raw_json))
+                        for cat in ["soci", "collab", "spese"]:
+                            items = dati.get(cat, [])
+                            for it in items:
+                                if isinstance(it, dict):
+                                    s_pag = it.get("Stato", "")
+                                    i_val = pulisci_per_calcoli(it.get("Importo", 0))
+                                    if s_pag == "Da pagare" and abs(i_val) > 0.01:
+                                        return "🟣"
+                except:
+                    pass
 
-    # --- TABELLA GESTIONALE ---
-    if not df.empty:
-        df_to_edit = df_filtered.copy()
+                # 🟡 PRIORITÀ 2: GIALLO (Stato Operativo)
+                stato_raw = str(row.get("Stato", "")).strip().lower()
+                if stato_raw in ["aperta", "in attesa"]: return "🟡"
+                if "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
 
-        # --- LOGICA COLORI / STATI ---
-        def calcola_stato_colore(row):
+                # 🟢 DEFAULT: VERDE
+                return "🟢"
+
+            # Applichiamo la logica
+            df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
             
-            # -----------------------------------------------------------
-            # 🟣 PRIORITÀ 1: FUCSIA (Pagamenti Pendenti)
-            # -----------------------------------------------------------
-            try:
-                raw_json = row.get("Dati_JSON", "{}")
-                if not pd.isna(raw_json) and str(raw_json).strip() != "":
-                    dati = json.loads(str(raw_json))
-                    for cat in ["soci", "collab", "spese"]:
-                        items = dati.get(cat, [])
-                        for it in items:
-                            if isinstance(it, dict):
-                                s_pag = it.get("Stato", "")
-                                i_val = pulisci_per_calcoli(it.get("Importo", 0))
-                                # Se "Da pagare" e importo reale (> 0.01)
-                                if s_pag == "Da pagare" and abs(i_val) > 0.01:
-                                    return "🟣"
-            except:
-                pass
+            # --- AGGIUNTA COLONNA DI SELEZIONE ---
+            # Nota: Usiamo "Seleziona" invece di "Elimina" per chiarezza
+            if "Seleziona" not in df_to_edit.columns:
+                 df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+            else:
+                 df_to_edit["Seleziona"] = st.session_state["select_all_state"]
 
-            # -----------------------------------------------------------
-            # 🟡 PRIORITÀ 2: GIALLO (Stato Operativo)
-            # Correzione: Rendiamo il controllo insensibile a maiuscole/spazi
-            # -----------------------------------------------------------
-            stato_raw = str(row.get("Stato", "")).strip().lower() # converte in minuscolo es: "aperta"
+            cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
+            df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
+
+            # --- FIX VISIVO IMPORTI ---
+            if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
+            if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
+
+            for col_name in ["Totale Netto", "Totale Lordo"]:
+                if col_name in df_to_edit.columns:
+                    df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
+
+            # Selezione colonne finali
+            cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
+            actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
+
+            st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
+
+            # --- RENDER TABELLA ---
+            edited_df = st.data_editor(
+                df_to_edit[actual_cols],
+                column_config={
+                    "Seleziona": st.column_config.CheckboxColumn("Sel", default=False, width="small"),
+                    "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato"),
+                    "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
+                    "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
+                },
+                disabled=[c for c in actual_cols if c != "Seleziona"], 
+                use_container_width=True,
+                hide_index=True,
+                height=500,
+                key="archive_editor"
+            )
+
+            # --- AZIONI SULLE RIGHE SELEZIONATE ---
+            rows_selected = edited_df[edited_df["Seleziona"] == True]
             
-            # Controlliamo se la parola è presente
-            if stato_raw in ["aperta", "in attesa"]:
-                return "🟡"
-            
-            # Controllo extra: se per caso nel file c'è scritto "Stato: Aperta" o simile
-            if "aperta" in stato_raw or "attesa" in stato_raw:
-                return "🟡"
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_mod, col_del, col_space = st.columns([0.3, 0.3, 0.4])
 
-            # -----------------------------------------------------------
-            # 🟢 DEFAULT: VERDE (Tutto il resto)
-            # -----------------------------------------------------------
-            return "🟢"
+            # TASTO MODIFICA
+            with col_mod:
+                if st.button("✏️ MODIFICA RIGA SELEZIONATA", use_container_width=True):
+                    if len(rows_selected) == 1:
+                        # Recupera il codice e attiva la modalità modifica
+                        codice_target = rows_selected.iloc[0]["Codice"]
+                        st.session_state["edit_codice_commessa"] = codice_target
+                        st.rerun()
+                    elif len(rows_selected) == 0:
+                        st.warning("Seleziona almeno una riga per modificarla.")
+                    else:
+                        st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
-        # Applichiamo la logica
-        df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
-        
-        # --- GESTIONE COLONNE ---
-        if "Elimina" not in df_to_edit.columns:
-             df_to_edit.insert(0, "Elimina", st.session_state["select_all_state"])
-        else:
-             df_to_edit["Elimina"] = st.session_state["select_all_state"]
-
-        cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
-        df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
-
-        # --- FIX VISIVO IMPORTI ---
-        if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
-        if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
-
-        for col_name in ["Totale Netto", "Totale Lordo"]:
-            if col_name in df_to_edit.columns:
-                df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
-
-        # Selezione colonne finali
-        cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
-        actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
-
-        st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
-
-        edited_df = st.data_editor(
-            df_to_edit[actual_cols],
-            column_config={
-                "Elimina": st.column_config.CheckboxColumn("Del", default=False, width="small"),
-                "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato"),
-                "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
-                "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
-            },
-            disabled=[c for c in actual_cols if c != "Elimina"], 
-            use_container_width=True,
-            hide_index=True,
-            height=500,
-            key="archive_editor"
-        )
-
-        rows_to_delete = edited_df[edited_df["Elimina"] == True]
-        if not rows_to_delete.empty:
-            st.error(f"⚠️ ATTENZIONE: Hai selezionato {len(rows_to_delete)} commesse per l'ELIMINAZIONE.")
-            if st.button(f"🗑️ CONFERMA CANCELLAZIONE DI {len(rows_to_delete)} COMMESSE", type="primary"):
-                codici_da_eliminare = rows_to_delete["Codice"].tolist()
-                elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+            # TASTO ELIMINA
+            with col_del:
+                # Per sicurezza, mostriamo un expander o controlliamo lo stato
+                if not rows_selected.empty:
+                    if st.button(f"🗑️ ELIMINA {len(rows_selected)} COMMESSE", type="primary", use_container_width=True):
+                        codici_da_eliminare = rows_selected["Codice"].tolist()
+                        elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+                else:
+                    st.button("🗑️ ELIMINA", disabled=True, use_container_width=True)
                 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1480,6 +1469,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
