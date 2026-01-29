@@ -688,27 +688,37 @@ def render_commessa_form(data=None):
         
         with top_metrics:
             b1, b2, b3, b4 = st.columns(4)
+            
+            # --- MODIFICA: Uso di st.empty() per aggiornamento in tempo reale ---
             with b1:
-                val_portatore = tot_net * (st.session_state["perc_portatore"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
+                # 1. Creiamo un segnaposto vuoto dove andrà il box colorato
+                box_portatore = st.empty()
+                # 2. Renderizziamo l'input. Se l'utente cambia valore, Streamlit riesegue lo script
                 new_perc_port = st.number_input("Perc %", 0, 100, int(st.session_state["perc_portatore"]), key="np")
-                if new_perc_port != st.session_state["perc_portatore"]:
-                    st.session_state["perc_portatore"] = new_perc_port
-                    st.rerun()
+                # 3. Aggiorniamo lo state e calcoliamo SUBITO il valore col nuovo input
+                st.session_state["perc_portatore"] = new_perc_port
+                val_portatore = tot_net * (new_perc_port / 100.0)
+                # 4. Riempiamo il segnaposto creato al punto 1 con il valore aggiornato
+                box_portatore.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
+            
             with b2:
-                val_societa = tot_net * (st.session_state["perc_societa"] / 100.0)
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
+                # Stesso meccanismo per la Società
+                box_societa = st.empty()
                 new_perc_soc = st.number_input("Perc %", 0, 100, int(st.session_state["perc_societa"]), key="ns")
-                if new_perc_soc != st.session_state["perc_societa"]:
-                    st.session_state["perc_societa"] = new_perc_soc
-                    st.rerun()
+                st.session_state["perc_societa"] = new_perc_soc
+                val_societa = tot_net * (new_perc_soc / 100.0)
+                box_societa.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
+            
             with b3: 
                 val_iva = tot_lordo - tot_net
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>{fmt_euro(val_iva)}</div></div>", unsafe_allow_html=True)
+            
             with b4: 
+                # Nota: qui calcoli gli utili prima di sottrarre portatore/società. 
+                # Se vuoi il netto reale, dovresti sottrarre anche val_portatore e val_societa.
                 val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
                 color = "#ff4b4b" if val_utili < 0 else "#ffffff"
-                st.markdown(f"<div class='total-box-desat'><div class='total-label'>UTILI</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='total-box-desat'><div class='total-label'>MARGINE</div><div class='total-value' style='color:{color};'>{fmt_euro(val_utili)}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     
@@ -740,8 +750,8 @@ def render_commessa_form(data=None):
                 "Codice": codice_finale, "Anno": anno, "Nome Commessa": nome_commessa, "Cliente": nome_cliente_finale,
                 "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Tel Referente": tel_ref,
                 "PM": coordinatore, "Portatore": portatore, "Settore": settore, "Stato": stato_header, 
-                "Totale Commessa": tot_commessa_full, # Salva il totale completo (previsto + fatt)
-                "Fatturato": fatturato_netto,         # Salva solo il fatturato
+                "Totale Commessa": tot_commessa_full, 
+                "Fatturato": fatturato_netto,         
                 "Portatore_Val": val_portatore, "Costi Società": val_societa, "Utile Netto": utile_netto,
                 "Data Inserimento": str(date.today()), "Dati_JSON": json_data
             }
@@ -1437,6 +1447,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
