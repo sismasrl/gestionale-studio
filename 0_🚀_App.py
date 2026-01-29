@@ -1211,72 +1211,62 @@ def render_dashboard():
     if not df.empty:
         df_to_edit = df_filtered.copy()
 
-        # --- LOGICA COLORI / STATI (SEMAFORO) ---
+        # --- LOGICA COLORI / STATI (SEMAFORO SMART) ---
         def calcola_stato_colore(row):
-            # -----------------------------------------------------------
-            # 🔴 PRIORITÀ 1: ROSSO (Utile Critico)
-            # Requisito: Utile <= 0
-            # -----------------------------------------------------------
+            # 1. RECUPERO DATI
             try:
-                # Tentiamo di recuperare l'utile. Se è stringa vuota o NaN diventa 0.0
                 val_utile = pulisci_per_calcoli(row.get("Utile Netto", 0))
             except:
                 val_utile = 0.0
+            
+            stato_commessa = str(row.get("Stato", "")).strip()
 
-            # NOTA: Se vuoi evitare che le commesse appena aperte (che hanno utile 0)
-            # diventino subito rosse, potresti voler escludere lo 0 se lo stato è "Aperta".
-            # Ma seguendo la tua richiesta letterale (<= 0), lasciamo così:
-            if val_utile <= 0:
-                # Un piccolo check extra: se è 0 spaccato E la commessa è appena aperta, 
-                # spesso non si vuole il rosso. Se però vuoi il ROSSO rigoroso su <=0, usa solo:
-                # return "🔴"
-                
-                # Check "morbido" per evitare "tutto rosso" ingiustificato su nuove commesse:
-                stato_att = str(row.get("Stato", "")).strip()
-                if val_utile == 0 and stato_att in ["Aperta", "In Attesa"]:
-                    pass # Lasciamo passare al controllo successivo (Giallo)
-                else:
-                    return "🔴" # Rosso se è negativo OPPURE se è 0 ma la commessa è finita
+            # -----------------------------------------------------------
+            # 🔴 PRIORITÀ 1: ROSSO (Perdita o Lavoro Gratis)
+            # -----------------------------------------------------------
+            # CASO A: Stai perdendo soldi (Utile negativo) -> SEMPRE ROSSO
+            if val_utile < -0.01: 
+                return "🔴"
+            
+            # CASO B: Utile è ZERO. 
+            # - Se la commessa è finita (NON Aperta/Attesa), è grave -> ROSSO.
+            # - Se la commessa è ancora in corso, 0 è normale -> SALTA IL ROSSO.
+            if abs(val_utile) < 0.01:
+                if stato_commessa not in ["Aperta", "In Attesa"]:
+                    return "🔴" # Commessa finita a zero euro
 
             # -----------------------------------------------------------
             # 🟣 PRIORITÀ 2: FUCSIA (Pagamenti Pendenti Reali)
-            # Requisiti: "Da pagare" E Importo != 0
+            # Requisito: Stato "Da pagare" E Importo NON è zero
             # -----------------------------------------------------------
             try:
                 raw_json = row.get("Dati_JSON", "{}")
                 if not pd.isna(raw_json) and str(raw_json).strip() != "":
                     dati = json.loads(str(raw_json))
-                    
-                    # Controlliamo tutte le liste rilevanti
                     for cat in ["soci", "collab", "spese"]:
                         items = dati.get(cat, [])
                         for it in items:
                             if isinstance(it, dict):
-                                stato_pag = it.get("Stato", "")
-                                # Puliamo l'importo per essere sicuri che "0,00" venga letto come 0
-                                imp_val = pulisci_per_calcoli(it.get("Importo", 0))
-                                
-                                # LA TUA NUOVA REGOLA:
-                                if stato_pag == "Da pagare" and imp_val != 0:
+                                s_pag = it.get("Stato", "")
+                                i_val = pulisci_per_calcoli(it.get("Importo", 0))
+                                # Se c'è un importo da pagare > 0
+                                if s_pag == "Da pagare" and abs(i_val) > 0.01:
                                     return "🟣"
             except:
-                pass # Errore lettura JSON, si prosegue
+                pass
 
             # -----------------------------------------------------------
-            # 🟡 PRIORITÀ 3: GIALLO (Stato Operativo)
-            # Requisito: Stato "Aperta" o "In Attesa"
+            # 🟡 PRIORITÀ 3: GIALLO (In Corso)
             # -----------------------------------------------------------
-            stato_commessa = str(row.get("Stato", "")).strip()
             if stato_commessa in ["Aperta", "In Attesa"]:
                 return "🟡"
             
             # -----------------------------------------------------------
-            # 🟢 DEFAULT: VERDE
-            # Tutto pagato (o importi a 0), Utile > 0, Commessa Chiusa
+            # 🟢 DEFAULT: VERDE (Tutto ok)
             # -----------------------------------------------------------
             return "🟢"
 
-        # Applichiamo la logica riga per riga
+        # Applichiamo la logica
         df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
         
         # --- GESTIONE COLONNE ---
@@ -1300,13 +1290,13 @@ def render_dashboard():
         cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-        st.caption("LEGENDA: 🔴 Utile ≤ 0 (Critico) | 🟣 Da pagare con importo > 0 | 🟡 In lavorazione/Attesa | 🟢 Completata & Utile OK")
+        st.caption("LEGENDA: 🔴 Utile Negativo (o nullo su commessa chiusa) | 🟣 Da pagare (>0€) | 🟡 In lavorazione | 🟢 Completata OK")
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("Del", default=False, width="small"),
-                "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato in base alle priorità (Utile > Pagamenti > Stato)"),
+                "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato in base alle priorità."),
                 "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
                 "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
             },
@@ -1504,6 +1494,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
