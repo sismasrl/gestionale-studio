@@ -476,7 +476,7 @@ def render_commessa_form(data=None):
         SERVIZI_LIST = sorted([
             "Archeologia Preventiva",
             "Assistenza Archeologica",
-            "Campionamento malte",
+            "Campionamento Malte",
             "Drone",
             "Indagine Diagnostica",
             "Inquadramento Archeologico Preliminare",
@@ -495,6 +495,7 @@ def render_commessa_form(data=None):
             "Rilievo Laser Scanner",
             "Rilievo Topografico",
             "RTI",
+            "Saggi e Trincee",
             "Scavo Archeologico",
             "Sorveglianza Archeologica",
             "Stampa 3D",
@@ -1532,6 +1533,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
