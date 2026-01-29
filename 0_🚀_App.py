@@ -445,7 +445,13 @@ def render_commessa_form(data=None):
             stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- NOME E DETTAGLI FULL WIDTH ---
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        dettagli_servizi = st.text_input("Dettagli Commessa", value=val_dettagli)
+        
         st.markdown("<br>", unsafe_allow_html=True)
         
         # --- MODIFICA LISTA SERVIZI ---
@@ -476,9 +482,9 @@ def render_commessa_form(data=None):
             "VPIA"
         ])
 
-        c_serv, c_dett = st.columns([2, 1])
-        with c_serv: servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
-        with c_dett: dettagli_servizi = st.text_input("Dettagli", value=val_dettagli)
+        # Rimossa divisione colonne: ora è full width
+        servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
+
 
     with st.expander("02 // COMMITTENZA", expanded=True):
         def on_cliente_change():
@@ -1505,6 +1511,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
