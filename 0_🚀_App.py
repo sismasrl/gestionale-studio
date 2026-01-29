@@ -410,49 +410,32 @@ def render_commessa_form(data=None):
             codice_display = val_codice_originale
             
             if is_edit and val_codice_originale:
-                # --- LOGICA MODIFICA (Mantiene logica esistente) ---
                 parts = re.split(r'[-/]', val_codice_originale)
-                
-                # Caso standard: PREFISSO / ANNO - NUMERO
                 if len(parts) >= 3:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    # Ricostruisce mantenendo il numero originale ma aggiornando il prefisso se cambia il settore
                     codice_display = f"{nuovo_prefisso}/{parts[1]}-{parts[2]}"
-                
-                # Caso fallback
                 elif len(parts) >= 2:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
                     codice_display = f"{nuovo_prefisso}/{parts[-1]}"
 
             elif not is_edit:
-                # --- LOGICA NUOVO: AUTO-INCREMENTO ---
                 prefisso = mappa_settori.get(settore, "RIL")
-                base_code_search = f"{prefisso}/{anno}-" # Es. RIL/2024-
+                base_code_search = f"{prefisso}/{anno}-" 
                 
-                # 1. Carica i dati per controllare l'ultimo numero
                 df_check = carica_dati("Foglio1")
                 max_num = 0
                 
                 if not df_check.empty and "Codice" in df_check.columns:
-                    # Filtra solo i codici che non sono nulli e li converte in stringa
                     codici_esistenti = df_check["Codice"].dropna().astype(str)
-                    
-                    # Cerca i codici che matchano Prefisso e Anno corrente
                     for c in codici_esistenti:
                         if c.startswith(base_code_search):
                             try:
-                                # Prende la parte dopo il trattino (es. "001")
                                 suffix = c.split("-")[-1]
                                 num = int(suffix)
-                                if num > max_num:
-                                    max_num = num
-                            except:
-                                pass # Ignora codici malformati
+                                if num > max_num: max_num = num
+                            except: pass
                 
-                # 2. Calcola il prossimo numero
                 next_num = max_num + 1
-                
-                # 3. Genera il codice (es. RIL/2024-002)
                 codice_display = f"{base_code_search}{next_num:03d}"
 
             st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
@@ -464,49 +447,21 @@ def render_commessa_form(data=None):
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- NOME E DETTAGLI FULL WIDTH ---
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
-        
         st.markdown("<br>", unsafe_allow_html=True)
         dettagli_servizi = st.text_input("Dettagli Commessa", value=val_dettagli)
-        
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- MODIFICA LISTA SERVIZI ---
         SERVIZI_LIST = sorted([
-            "Archeologia Preventiva",
-            "Assistenza Archeologica",
-            "Campionamento Malte",
-            "Drone",
-            "Indagine Diagnostica",
-            "Inquadramento Archeologico Preliminare",
-            "Modellazione 3D",
-            "Modellazione BIM",
-            "Relazione Archeologica",
-            "Relazione Storica",
-            "Restituzione CAD",
-            "Restituzione Materico",
-            "Restituzione Fotopiani",
-            "Restituzione Materico",
-            "Restituzione Quadro Fessurativo",
-            "Ricerca Archeologica",
-            "Rilievo Fotogrammetrico",
-            "Rilievo GPS",
-            "Rilievo Laser Scanner",
-            "Rilievo Topografico",
-            "RTI",
-            "Saggi e Trincee",
-            "Scavo Archeologico",
-            "Sorveglianza Archeologica",
-            "Stampa 3D",
-            "VIARCH",
-            "Virtual Tour",
-            "VPIA"
+            "Archeologia Preventiva", "Assistenza Archeologica", "Campionamento Malte", "Drone",
+            "Indagine Diagnostica", "Inquadramento Archeologico Preliminare", "Modellazione 3D",
+            "Modellazione BIM", "Relazione Archeologica", "Relazione Storica", "Restituzione CAD",
+            "Restituzione Materico", "Restituzione Fotopiani", "Restituzione Quadro Fessurativo",
+            "Ricerca Archeologica", "Rilievo Fotogrammetrico", "Rilievo GPS", "Rilievo Laser Scanner",
+            "Rilievo Topografico", "RTI", "Saggi e Trincee", "Scavo Archeologico",
+            "Sorveglianza Archeologica", "Stampa 3D", "VIARCH", "Virtual Tour", "VPIA"
         ])
-
-        # Rimossa divisione colonne: ora è full width
         servizi_scelti = st.multiselect("Servizi Richiesti", SERVIZI_LIST, default=val_servizi)
-
 
     with st.expander("02 // COMMITTENZA", expanded=True):
         def on_cliente_change():
@@ -616,34 +571,20 @@ def render_commessa_form(data=None):
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
         
         # --- 1. FUNZIONI DI FORMATTAZIONE E PULIZIA ---
-        
-        # Formattazione VISIVA per i box totali (es. 1000.50 -> "€ 1.000,50")
         fmt_euro = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-        # Funzione CRITICA: converte qualsiasi stringa "1.234,56" in float 1234.56
         def converti_valuta_italiana(val):
             if pd.isna(val) or str(val).strip() == "": return 0.0
-            
-            # Se è già un numero (float o int), lo teniamo così com'è
-            if isinstance(val, (float, int)):
-                return float(val)
-            
+            if isinstance(val, (float, int)): return float(val)
             s = str(val).replace("€", "").strip()
-            
-            # Caso specifico: se l'utente scrive "1.628,64"
             if "," in s:
-                s = s.replace(".", "")  # Via i separatori migliaia
-                s = s.replace(",", ".") # Virgola diventa punto
+                s = s.replace(".", "").replace(",", ".")
             else:
-                if s.count(".") >= 1:
-                     s = s.replace(".", "") 
+                if s.count(".") >= 1: s = s.replace(".", "") 
+            try: return float(s)
+            except: return 0.0
 
-            try:
-                return float(s)
-            except:
-                return 0.0
-
-        # --- 2. PREPARAZIONE DATI PRIMA DELL'EDITOR ---
+        # --- 2. PREPARAZIONE DATI ---
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
@@ -670,14 +611,10 @@ def render_commessa_form(data=None):
         
         # --- 4. CALCOLI E SALVATAGGIO ---
         ricalcolo = edited_incassi.copy()
-        
-        # Riaplichiamo la conversione in uscita per sicurezza
         ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(converti_valuta_italiana)
-        
-        # Calcolo matematico
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
         
-        # Verifica differenze
+        # Verifica differenze per rerun
         diff_check = False
         try:
             netto_old = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana).round(2)
@@ -688,33 +625,34 @@ def render_commessa_form(data=None):
                  cols_no_calc = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
                  if not ricalcolo[cols_no_calc].equals(st.session_state["stato_incassi"][cols_no_calc]):
                      diff_check = True
-        except:
-            diff_check = True
+        except: diff_check = True
 
         if diff_check:
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
-        # --- MODIFICA RICHIESTA: Calcolo Totali filtrando per Stato == 'Fatturato' ---
-        # Creiamo una maschera booleana
-        mask_fatturato = ricalcolo["Stato"] == "Fatturato"
+        # --- CALCOLI TOTALI (FIX ERROR NAME_DEFINED) ---
         
-        # Sommiamo solo le righe dove la maschera è True
-        tot_net = ricalcolo.loc[mask_fatturato, "Importo netto €"].sum()
-        tot_lordo = ricalcolo.loc[mask_fatturato, "Importo lordo €"].sum()
+        # 1. Totale Commessa COMPLETO (Per il database: somma tutto)
+        tot_commessa_full = ricalcolo["Importo netto €"].sum()
+
+        # 2. Totale FATTURATO (Per il database e visualizzazione: solo stato 'Fatturato')
+        mask_fatturato = ricalcolo["Stato"] == "Fatturato"
+        fatturato_netto = ricalcolo.loc[mask_fatturato, "Importo netto €"].sum()
+        fatturato_lordo = ricalcolo.loc[mask_fatturato, "Importo lordo €"].sum()
+        
+        # 3. Totale per Visualizzazione e Calcolo Provvigioni (Usa il Fatturato come richiesto)
+        tot_net = fatturato_netto
+        tot_lordo = fatturato_lordo
         
         k1, k2 = st.columns(2)
-        # Ho cambiato le label per chiarezza, ma puoi rimettere "Totale Netto" se preferisci
         with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto (Fatturato)</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
         with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo (Fatturato)</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
 
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
-        
-        # Funzione helper per applicare la config comune
-        def get_money_col():
-             return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
+        def get_money_col(): return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
 
         st.markdown("### SOCI")
         soci_cfg = {
@@ -723,10 +661,7 @@ def render_commessa_form(data=None):
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        # Applichiamo pulizia preventiva anche qui se necessario
-        if "Importo" in df_soci_def.columns:
-             df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
-             
+        if "Importo" in df_soci_def.columns: df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
 
         st.markdown("### COLLABORATORI")
@@ -735,9 +670,7 @@ def render_commessa_form(data=None):
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        if "Importo" in df_collab_def.columns:
-             df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
-             
+        if "Importo" in df_collab_def.columns: df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
         edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
 
         st.markdown("### SPESE VARIE")
@@ -746,12 +679,9 @@ def render_commessa_form(data=None):
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
             "Data": st.column_config.DateColumn(format="DD/MM/YYYY")
         }
-        if "Importo" in df_spese_def.columns:
-             df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
-             
+        if "Importo" in df_spese_def.columns: df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
-        # Somme con conversione di sicurezza sull'output dell'editor
         sum_soci = edited_soci["Importo"].apply(converti_valuta_italiana).sum()
         sum_collab = edited_collab["Importo"].apply(converti_valuta_italiana).sum()
         sum_spese = edited_spese["Importo"].apply(converti_valuta_italiana).sum()
@@ -782,18 +712,16 @@ def render_commessa_form(data=None):
 
     st.markdown("---")
     
-    # --- SALVATAGGIO: LOGICA CORRETTA ---
+    # --- SALVATAGGIO ---
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
         else:
-            # Gestione Nuovo Cliente "al volo"
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
                 rec_cliente = {"Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO"}
                 salva_record(rec_cliente, "Clienti", "Denominazione", "new")
             
-            # Preparazione dati JSON
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             json_data = json.dumps({
@@ -812,47 +740,33 @@ def render_commessa_form(data=None):
                 "Codice": codice_finale, "Anno": anno, "Nome Commessa": nome_commessa, "Cliente": nome_cliente_finale,
                 "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Tel Referente": tel_ref,
                 "PM": coordinatore, "Portatore": portatore, "Settore": settore, "Stato": stato_header, 
-                "Totale Commessa": tot_net, "Fatturato": fatturato_netto,
+                "Totale Commessa": tot_commessa_full, # Salva il totale completo (previsto + fatt)
+                "Fatturato": fatturato_netto,         # Salva solo il fatturato
                 "Portatore_Val": val_portatore, "Costi Società": val_societa, "Utile Netto": utile_netto,
                 "Data Inserimento": str(date.today()), "Dati_JSON": json_data
             }
 
-            # -----------------------------------------------------------
-            # LOGICA SALVATAGGIO DIFFERENZIATA
-            # -----------------------------------------------------------
-            
-            # CASO 1: MODIFICA DEL CODICE (es. cambio settore)
             if is_edit and codice_finale != val_codice_originale:
                 salva_record(rec, "Foglio1", "Codice", mode="new")
                 elimina_record(val_codice_originale, "Foglio1", "Codice")
                 st.success(f"Commessa aggiornata da {val_codice_originale} a {codice_finale}")
                 time.sleep(1)
-                return True # Chiude e torna alla dashboard
-
-            # CASO 2: UPDATE O NUOVO INSERIMENTO
+                return True 
             else:
                 mode_save = "update" if is_edit else "new"
                 salva_record(rec, "Foglio1", "Codice", mode=mode_save)
                 
                 if is_edit:
-                    # SE STIAMO MODIFICANDO -> Torna alla dashboard
                     st.success("Commessa aggiornata!")
                     time.sleep(1)
                     return True 
                 else:
-                    # SE E' NUOVA -> Pulisce tutto e rimane sul form
                     st.success("Nuova commessa salvata! Resetto il form...")
                     time.sleep(1)
-                    
-                    # RESET VARIABILI DI STATO PER NUOVO INSERIMENTO
                     keys_to_clear = ["form_cliente", "form_piva", "form_sede", "form_ref", "form_tel", "stato_incassi", "sel_cliente_box"]
                     for k in keys_to_clear:
                         if k in st.session_state: del st.session_state[k]
-                    
-                    # Imposta last_loaded_code per forzare il refresh come 'NEW'
                     st.session_state["last_loaded_code"] = "RESET"
-                    
-                    # Ricarica la pagina (eseguirà render con campi vuoti)
                     st.rerun()
 
     if is_edit:
@@ -861,7 +775,7 @@ def render_commessa_form(data=None):
                 elimina_record(codice_finale, "Foglio1", "Codice")
                 st.success("Commessa eliminata.")
                 time.sleep(1)
-                return True # Chiude anche in caso di eliminazione
+                return True 
 
     return False
 
@@ -1523,6 +1437,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
