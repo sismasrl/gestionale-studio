@@ -1211,47 +1211,48 @@ def render_dashboard():
     if not df.empty:
         df_to_edit = df_filtered.copy()
 
-        # --- LOGICA COLORI / STATI (SENZA ROSSO) ---
+        # --- LOGICA COLORI / STATI ---
         def calcola_stato_colore(row):
             
             # -----------------------------------------------------------
             # 🟣 PRIORITÀ 1: FUCSIA (Pagamenti Pendenti)
-            # Controlla JSON: Se c'è stato "Da pagare" E Importo != 0
             # -----------------------------------------------------------
             try:
                 raw_json = row.get("Dati_JSON", "{}")
                 if not pd.isna(raw_json) and str(raw_json).strip() != "":
                     dati = json.loads(str(raw_json))
-                    
-                    # Liste da controllare
                     for cat in ["soci", "collab", "spese"]:
                         items = dati.get(cat, [])
                         for it in items:
                             if isinstance(it, dict):
                                 s_pag = it.get("Stato", "")
                                 i_val = pulisci_per_calcoli(it.get("Importo", 0))
-                                
-                                # Se "Da pagare" e l'importo è reale (non zero)
+                                # Se "Da pagare" e importo reale (> 0.01)
                                 if s_pag == "Da pagare" and abs(i_val) > 0.01:
                                     return "🟣"
             except:
-                pass # Se errore nel json, ignora e procedi
+                pass
 
             # -----------------------------------------------------------
             # 🟡 PRIORITÀ 2: GIALLO (Stato Operativo)
-            # Se la commessa è ancora in corso
+            # Correzione: Rendiamo il controllo insensibile a maiuscole/spazi
             # -----------------------------------------------------------
-            stato_commessa = str(row.get("Stato", "")).strip()
-            if stato_commessa in ["Aperta", "In Attesa"]:
+            stato_raw = str(row.get("Stato", "")).strip().lower() # converte in minuscolo es: "aperta"
+            
+            # Controlliamo se la parola è presente
+            if stato_raw in ["aperta", "in attesa"]:
                 return "🟡"
             
+            # Controllo extra: se per caso nel file c'è scritto "Stato: Aperta" o simile
+            if "aperta" in stato_raw or "attesa" in stato_raw:
+                return "🟡"
+
             # -----------------------------------------------------------
-            # 🟢 DEFAULT: VERDE
-            # Commessa Chiusa/Consegnata e tutto pagato
+            # 🟢 DEFAULT: VERDE (Tutto il resto)
             # -----------------------------------------------------------
             return "🟢"
 
-        # Applichiamo la logica riga per riga
+        # Applichiamo la logica
         df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
         
         # --- GESTIONE COLONNE ---
@@ -1271,18 +1272,17 @@ def render_dashboard():
             if col_name in df_to_edit.columns:
                 df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-        # Selezione colonne finali da mostrare
+        # Selezione colonne finali
         cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-        # Legenda aggiornata (Senza Rosso)
-        st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Commessa Chiusa e Saldada")
+        st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("Del", default=False, width="small"),
-                "🚦 STATO": st.column_config.Column("Info", width="small", help="🟣 Da pagare presente\n🟡 Aperta/In Attesa\n🟢 Chiusa"),
+                "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato"),
                 "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
                 "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
             },
@@ -1480,6 +1480,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
