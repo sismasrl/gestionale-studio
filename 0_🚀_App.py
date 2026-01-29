@@ -189,6 +189,8 @@ def get_worksheet(sheet_name="Foglio1"):
         st.error(f"Errore GSpread: {e}")
         return None
 
+# --- MODIFICA 1: Aggiunto decoratore Cache ---
+@st.cache_data(ttl=600)
 def carica_dati(sheet_name="Foglio1"):
     wks = get_worksheet(sheet_name)
     if not wks: return pd.DataFrame()
@@ -204,6 +206,10 @@ def salva_record(record, sheet_name="Foglio1", key_field="Codice", mode="new"):
     df_final = pd.concat([df, new_row], ignore_index=True)
     wks.clear()
     wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
+    
+    # --- MODIFICA 2: Pulisci cache dopo salvataggio ---
+    carica_dati.clear()
+    
     st.toast("SALVATAGGIO RIUSCITO", icon="✅")
 
 def elimina_record(valore_chiave, sheet_name="Foglio1", key_field="Codice"):
@@ -213,6 +219,10 @@ def elimina_record(valore_chiave, sheet_name="Foglio1", key_field="Codice"):
         df_final = df[df[key_field].astype(str) != str(valore_chiave)]
         wks.clear()
         wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
+        
+        # --- MODIFICA 3: Pulisci cache dopo eliminazione ---
+        carica_dati.clear()
+        
         st.toast(f"ELEMENTO ELIMINATO", icon="🗑️")
         time.sleep(1)
         st.rerun()
@@ -226,6 +236,10 @@ def elimina_record_batch(lista_codici, sheet_name="Foglio1", key_field="Codice")
         df_final = df[~df[key_field].astype(str).isin(lista_str)]
         wks.clear()
         wks.update([df_final.columns.values.tolist()] + df_final.values.tolist())
+        
+        # --- MODIFICA 4: Pulisci cache dopo eliminazione batch ---
+        carica_dati.clear()
+        
         st.toast(f"ELIMINATI {len(lista_codici)} ELEMENTI", icon="🗑️")
         time.sleep(1)
         st.rerun()
@@ -290,6 +304,10 @@ def importa_excel_batch(uploaded_file):
                 for h in headers: ordered_row.append(r.get(h, ""))
                 rows_to_append.append(ordered_row)
             wks.append_rows(rows_to_append)
+            
+            # --- MODIFICA 5: Pulisci cache dopo importazione ---
+            carica_dati.clear()
+            
             st.success(f"✅ Importati {len(records_to_add)} record. ({count_skipped} duplicati ignorati)")
             time.sleep(2)
             st.rerun()
@@ -1514,6 +1532,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
