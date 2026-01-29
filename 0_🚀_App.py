@@ -1211,46 +1211,80 @@ def render_dashboard():
     if not df.empty:
         df_to_edit = df_filtered.copy()
 
-        # --- LOGICA COLORI / STATI (SEMAFORO) ---
+        # --- LOGICA COLORI / STATI (SEMAFORO SMART) ---
         def calcola_stato_colore(row):
-            # 🔴 PRIORITÀ 1 (ROSSO): Utili <= 0
-            # Controlla il valore salvato nella colonna "Utile Netto"
-            try:
-                utile = pulisci_per_calcoli(row.get("Utile Netto", 0))
-            except:
-                utile = 0.0
+            # 1. RECUPERO UTILE (Con tentativi di ricalcolo se manca)
+            utile_val = 0.0
             
-            if utile <= 0:
-                return "🔴" 
+            # A) Proviamo a leggere la colonna diretta dall'Excel
+            try:
+                utile_val = pulisci_per_calcoli(row.get("Utile Netto", 0))
+            except:
+                utile_val = 0.0
 
-            # 🟣 PRIORITÀ 2 (FUCSIA): Pagamenti "Da pagare"
-            # Apre il JSON e controlla Soci, Collaboratori, Spese
+            # B) FORZATURA: Se Utile è 0, potrebbe essere un dato mancante/vecchio. 
+            # Proviamo a calcolarlo: Fatturato Netto - (Soci + Collab + Spese + %Struttura)
+            if utile_val == 0:
+                try:
+                    fatt_netto = row.get("_Fatt_Netto_Calc", 0.0) # Calcolato prima
+                    raw_json = row.get("Dati_JSON", "{}")
+                    if not pd.isna(raw_json) and str(raw_json).strip() != "":
+                        dati = json.loads(str(raw_json))
+                        
+                        costi_tot = 0.0
+                        # Somma uscite vive
+                        for cat in ["soci", "collab", "spese"]:
+                            for item in dati.get(cat, []):
+                                costi_tot += pulisci_per_calcoli(item.get("Importo", 0))
+                        
+                        # Calcolo costi percentuali (Portatore + Società)
+                        percs = dati.get("percentages", {})
+                        perc_p = float(percs.get("portatore", 0))
+                        perc_s = float(percs.get("societa", 0))
+                        costi_tot += fatt_netto * ((perc_p + perc_s) / 100.0)
+                        
+                        utile_calc = fatt_netto - costi_tot
+                        # Se il calcolo dà un risultato diverso da 0, usiamo quello
+                        if utile_calc != 0:
+                            utile_val = utile_calc
+                except:
+                    pass # Se fallisce, teniamo 0.0
+
+            # Recuperiamo lo stato testuale per i controlli
+            stato_commessa = str(row.get("Stato", "")).strip()
+
+            # --- 🔴 PRIORITÀ 1: ROSSO (Utile Critico) ---
+            # Regola: Rosso se Negativo (<0). 
+            # SE è uguale a 0, diventa Rosso SOLO se la commessa NON è Aperta/In Attesa.
+            # (Così le commesse nuove appena create non nascono 'in errore').
+            is_negativo = (utile_val < -0.01) # Tolleranza centesimi
+            is_zero_concluso = (abs(utile_val) < 0.01 and stato_commessa not in ["Aperta", "In Attesa"])
+            
+            if is_negativo or is_zero_concluso:
+                return "🔴"
+
+            # --- 🟣 PRIORITÀ 2: FUCSIA (Pagamenti Pendenti) ---
+            # Controlla JSON per stati "Da pagare"
             try:
                 raw_json = row.get("Dati_JSON", "{}")
-                if pd.isna(raw_json) or str(raw_json).strip() == "":
-                    dati = {}
-                else:
+                if not pd.isna(raw_json) and str(raw_json).strip() != "":
                     dati = json.loads(str(raw_json))
-                
-                # Liste da controllare nel JSON
-                for cat in ["soci", "collab", "spese"]:
-                    items = dati.get(cat, [])
-                    for it in items:
-                        # Se trova anche solo un elemento "Da pagare", restituisce Fucsia
-                        if isinstance(it, dict) and it.get("Stato") == "Da pagare":
-                            return "🟣" 
+                    for cat in ["soci", "collab", "spese"]:
+                        items = dati.get(cat, [])
+                        for it in items:
+                            if isinstance(it, dict) and it.get("Stato") == "Da pagare":
+                                return "🟣"
             except:
-                pass # Se errore nel json, ignora e procedi al prossimo controllo
+                pass
 
-            # 🟡 PRIORITÀ 3 (GIALLO): Stato Commessa Aperta o In Attesa
-            stato_commessa = str(row.get("Stato", "")).strip()
+            # --- 🟡 PRIORITÀ 3: GIALLO (Stato Operativo) ---
             if stato_commessa in ["Aperta", "In Attesa"]:
-                return "🟡" 
+                return "🟡"
             
-            # 🟢 DEFAULT (VERDE): Tutto pagato, utile positivo, stato chiuso/consegnato
+            # --- 🟢 DEFAULT: VERDE ---
             return "🟢"
 
-        # Applichiamo la logica riga per riga
+        # Applichiamo la logica
         df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
         
         # --- GESTIONE CHECKBOX ELIMINA ---
@@ -1262,47 +1296,28 @@ def render_dashboard():
         cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
         df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-        # --- FIX VISIVO & COLONNE CALCOLATE ---
-        if "_Fatt_Netto_Calc" in df_filtered.columns:
-             df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
-        
-        if "_Fatt_Lordo_Calc" in df_filtered.columns:
-             df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
+        # --- FIX VISIVO ---
+        if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
+        if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
 
-        # Convertiamo entrambe in TESTO FORMATTATO
         for col_name in ["Totale Netto", "Totale Lordo"]:
             if col_name in df_to_edit.columns:
-                df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo)
-                df_to_edit[col_name] = df_to_edit[col_name].astype(str)
+                df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-        # Definiamo le colonne da mostrare 
+        # Colonne da mostrare
         cols_to_show = ["Elimina", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
         actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-        # Legenda colori aggiornata
-        st.caption("LEGENDA: 🔴 Utile ≤ 0 (Critico) | 🟣 Pagamenti 'Da pagare' (Amministrativo) | 🟡 Commessa Aperta/Attesa (Operativo) | 🟢 Completata & Utile OK")
+        st.caption("LEGENDA: 🔴 Utile < 0 (Perdita) | 🟣 Da pagare (Sospesi) | 🟡 In lavorazione/Attesa | 🟢 Completata (Utile OK)")
 
         edited_df = st.data_editor(
             df_to_edit[actual_cols],
             column_config={
                 "Elimina": st.column_config.CheckboxColumn("Del", default=False, width="small"),
-                "🚦 STATO": st.column_config.Column(
-                    "Info", 
-                    width="small", 
-                    help="🔴: Utile negativo/nullo\n🟣: Ci sono pagamenti in sospeso (Soci/Collab/Spese)\n🟡: Commessa non ancora chiusa\n🟢: Tutto OK"
-                ),
-                "Totale Netto": st.column_config.TextColumn(
-                    "Totale Netto",
-                    help="Somma Netta calcolata dagli importi della scheda",
-                    width="medium"
-                ),
-                "Totale Lordo": st.column_config.TextColumn(
-                    "Totale Lordo",
-                    help="Somma Lorda calcolata dagli importi della scheda",
-                    width="medium"
-                ),
+                "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato in base a Utile, Pagamenti e Avanzamento."),
+                "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
+                "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
             },
-            # Disabilitiamo edit su tutte tranne "Elimina"
             disabled=[c for c in actual_cols if c != "Elimina"], 
             use_container_width=True,
             hide_index=True,
@@ -1497,6 +1512,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
