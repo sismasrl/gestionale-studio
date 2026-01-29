@@ -819,12 +819,16 @@ def render_clienti_page():
         # Aggiornamento stato
         if sel != st.session_state["cliente_selezionato"]:
             st.session_state["cliente_selezionato"] = sel
+            st.rerun()
             
         # Recupero Dati
         d = df[df["Denominazione"] == sel].iloc[0].to_dict() if sel and not df.empty else {}
         
+        # Variabile per sapere se siamo in modifica (True) o nuovo (False)
+        is_editing = True if (sel and sel != "") else False
+
         # Tasto Nuovo
-        if sel:
+        if is_editing:
             if st.button("➕ NUOVO CLIENTE (Deseleziona)", use_container_width=True):
                 st.session_state["cliente_selezionato"] = None
                 st.rerun()
@@ -832,7 +836,9 @@ def render_clienti_page():
         st.markdown("---")
 
         with st.form("frm_cli"):
-            den = st.text_input("Denominazione *", value=d.get("Denominazione", ""))
+            # --- MODIFICA FONDAMENTALE: IL NOME È BLOCCATO SE SIAMO IN EDITING ---
+            st.caption("Il nome del cliente non è modificabile in fase di aggiornamento.")
+            den = st.text_input("Denominazione *", value=d.get("Denominazione", ""), disabled=is_editing)
             
             c1, c2 = st.columns(2)
             piva = c1.text_input("P.IVA", value=d.get("P_IVA", ""))
@@ -847,11 +853,13 @@ def render_clienti_page():
             c5, c6 = st.columns(2)
             lista_soci = SOCI_OPZIONI if 'SOCI_OPZIONI' in globals() else ["Socio A", "Socio B"]
             
-            idx_cont = lista_soci.index(d.get("Contatto_SISMA")) + 1 if d.get("Contatto_SISMA") in lista_soci else 0
+            val_contatto = d.get("Contatto_SISMA", "")
+            idx_cont = lista_soci.index(val_contatto) + 1 if val_contatto in lista_soci else 0
             cont = c5.selectbox("Contatto SISMA", [""] + lista_soci, index=idx_cont)
             
             sets = ["ARCHEOLOGIA", "RILIEVO", "INTEGRATI", "ALTRO"]
-            idx_set = sets.index(d.get("Settore")) if d.get("Settore") in sets else 3
+            val_settore = d.get("Settore", "ALTRO")
+            idx_set = sets.index(val_settore) if val_settore in sets else 3
             sett = c6.selectbox("Settore", sets, index=idx_set)
             
             st.markdown("<br>", unsafe_allow_html=True)
@@ -863,13 +871,20 @@ def render_clienti_page():
             
             note = st.text_area("Note", value=d.get("Note", ""))
             
-            if st.form_submit_button("💾 SALVA CLIENTE", type="primary", use_container_width=True):
-                if not den: 
+            # Testo dinamico del pulsante
+            label_btn = "💾 AGGIORNA DATI CLIENTE" if is_editing else "💾 SALVA NUOVO CLIENTE"
+
+            if st.form_submit_button(label_btn, type="primary", use_container_width=True):
+                # Se stiamo creando un NUOVO, usiamo il valore del campo testo.
+                # Se stiamo EDITANDO, usiamo la selezione (per sicurezza, anche se il campo è disabilitato).
+                nome_finale = sel if is_editing else den
+
+                if not nome_finale: 
                     st.error("Nome obbligatorio")
                 else:
                     final_state = "FALSE" if chk_inactive else ("TRUE" if chk_active else "FALSE")
                     rec = {
-                        "Denominazione": den, 
+                        "Denominazione": nome_finale, 
                         "P_IVA": piva, 
                         "Sede": sede, 
                         "Referente": ref, 
@@ -880,10 +895,27 @@ def render_clienti_page():
                         "Attivo": final_state, 
                         "Note": note
                     }
-                    salva_record(rec, "Clienti", "Denominazione", "update" if sel else "new")
-                    st.success("Cliente salvato!")
-                    time.sleep(1)
-                    st.rerun()
+
+                    try:
+                        if is_editing:
+                            # MODALITÀ UPDATE: Aggiorna il record esistente trovato tramite "Denominazione"
+                            salva_record(rec, "Clienti", "Denominazione", "update")
+                            st.success("Dati cliente aggiornati correttamente!")
+                        else:
+                            # MODALITÀ NEW: Crea nuovo
+                            # Controllo preventivo duplicati se necessario, ma salva_record di solito gestisce
+                            if nome_finale in nomi:
+                                st.warning("Esiste già un cliente con questo nome. Aggiorno quello esistente.")
+                                salva_record(rec, "Clienti", "Denominazione", "update")
+                            else:
+                                salva_record(rec, "Clienti", "Denominazione", "new")
+                                st.success("Nuovo cliente creato!")
+                        
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Errore durante il salvataggio: {e}")
 
     # --- COLONNA DESTRA: LISTA E IMPORT/EXPORT ---
     with c_list:
@@ -931,6 +963,7 @@ def render_clienti_page():
                                 if rec_import.get("Denominazione") and str(rec_import["Denominazione"]).strip() != "":
                                     if "Attivo" not in rec_import or rec_import["Attivo"] == "":
                                         rec_import["Attivo"] = "TRUE"
+                                    # Qui usiamo sempre update/insert logica interna
                                     salva_record(rec_import, "Clienti", "Denominazione", "update")
                                     count += 1
                                 if total > 0:
@@ -1469,6 +1502,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
