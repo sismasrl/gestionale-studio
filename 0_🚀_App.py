@@ -631,16 +631,10 @@ def render_commessa_form(data=None):
             s = str(val).replace("€", "").strip()
             
             # Caso specifico: se l'utente scrive "1.628,64"
-            # 1. Rimuoviamo i punti delle migliaia (.)
-            # 2. Sostituiamo la virgola dei decimali (,) con il punto standard (.)
             if "," in s:
-                s = s.replace(".", "")  # Via i separatori migliaia (1.628,64 -> 1628,64)
-                s = s.replace(",", ".") # Virgola diventa punto (1628,64 -> 1628.64)
+                s = s.replace(".", "")  # Via i separatori migliaia
+                s = s.replace(",", ".") # Virgola diventa punto
             else:
-                # Se non c'è virgola, potrebbe essere "1628" o "1.628" (inglese?)
-                # Assumiamo che se ci sono punti senza virgole in un contesto italiano, siano migliaia.
-                # Ma per sicurezza, se il numero di decimali dopo il punto è strano, stiamo attenti.
-                # Per semplicità in questo contesto: Rimuoviamo il punto se sembra un separatore migliaia.
                 if s.count(".") >= 1:
                      s = s.replace(".", "") 
 
@@ -650,14 +644,11 @@ def render_commessa_form(data=None):
                 return 0.0
 
         # --- 2. PREPARAZIONE DATI PRIMA DELL'EDITOR ---
-        # Puliamo preventivamente i dati nel session state per assicurarci che siano float puri
-        # Questo evita che l'editor riceva stringhe ambigue.
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
-            # step=0.01 aiuta l'editor a capire che vogliamo i decimali
             "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
@@ -680,23 +671,20 @@ def render_commessa_form(data=None):
         # --- 4. CALCOLI E SALVATAGGIO ---
         ricalcolo = edited_incassi.copy()
         
-        # Riaplichiamo la conversione in uscita per sicurezza (se l'utente ha incollato testo strano)
+        # Riaplichiamo la conversione in uscita per sicurezza
         ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(converti_valuta_italiana)
         
-        # Calcolo matematico (ora siamo sicuri che siano float corretti)
+        # Calcolo matematico
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
         
-        # Verifica differenze (con tolleranza float per evitare loop infiniti su 0.0000001)
-        # Usiamo .round(2) per confrontare cifre monetarie
+        # Verifica differenze
         diff_check = False
         try:
-            # Confronto manuale sui valori numerici chiave
             netto_old = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana).round(2)
             netto_new = ricalcolo["Importo netto €"].round(2)
             if not netto_old.equals(netto_new) or len(ricalcolo) != len(st.session_state["stato_incassi"]):
                 diff_check = True
             else:
-                 # Check altre colonne
                  cols_no_calc = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
                  if not ricalcolo[cols_no_calc].equals(st.session_state["stato_incassi"][cols_no_calc]):
                      diff_check = True
@@ -707,16 +695,18 @@ def render_commessa_form(data=None):
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
-        # Somme (sicure perché convertite)
-        tot_net = ricalcolo["Importo netto €"].sum()
-        tot_lordo = ricalcolo["Importo lordo €"].sum()
+        # --- MODIFICA RICHIESTA: Calcolo Totali filtrando per Stato == 'Fatturato' ---
+        # Creiamo una maschera booleana
+        mask_fatturato = ricalcolo["Stato"] == "Fatturato"
         
-        df_fatt = ricalcolo.copy()
-        fatturato_netto = df_fatt[df_fatt['Stato'].astype(str) == 'Fatturato']['Importo netto €'].sum()
-
+        # Sommiamo solo le righe dove la maschera è True
+        tot_net = ricalcolo.loc[mask_fatturato, "Importo netto €"].sum()
+        tot_lordo = ricalcolo.loc[mask_fatturato, "Importo lordo €"].sum()
+        
         k1, k2 = st.columns(2)
-        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
-        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
+        # Ho cambiato le label per chiarezza, ma puoi rimettere "Totale Netto" se preferisci
+        with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto (Fatturato)</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo (Fatturato)</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
 
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
@@ -1533,6 +1523,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
