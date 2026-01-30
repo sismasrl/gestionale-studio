@@ -1029,7 +1029,6 @@ def render_dashboard():
     # --- CSS HACK: Allineamento centrato prime due colonne ---
     st.markdown("""
     <style>
-    /* Tenta di centrare il contenuto delle prime due colonne del Data Editor */
     div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="gridcell"]:nth-child(1),
     div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="gridcell"]:nth-child(2) {
         justify-content: center !important;
@@ -1057,7 +1056,6 @@ def render_dashboard():
         s = s.replace("€", "").strip()
         
         try:
-            # Gestione formati misti per ottenere un float puro (es. 1628.64)
             if "." in s and "," in s:
                 s = s.replace(".", "").replace(",", ".")
             elif "," in s:
@@ -1066,7 +1064,6 @@ def render_dashboard():
                 parts = s.split(".")
                 if len(parts) > 1 and len(parts[-1]) != 2: 
                      s = s.replace(".", "")
-            
             return float(s)
         except:
             return 0.0
@@ -1110,15 +1107,13 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- CALCOLO TOTALE PIANO ECONOMICO (Somma Importi Netti Preventivati) ---
+        # --- CALCOLO TOTALE PIANO ECONOMICO ---
         def calcola_totale_piano(row):
             t_piano = 0.0
             raw_json = row.get("Dati_JSON", "")
             if pd.isna(raw_json) or str(raw_json).strip() == "": return 0.0
-            
             try:
                 dati = json.loads(str(raw_json))
-                # Somma tutti gli 'Importo netto €' presenti in 'incassi' (che è il Piano Economico)
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     if isinstance(item, dict):
@@ -1131,11 +1126,8 @@ def render_dashboard():
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
-            
             raw_json = row.get("Dati_JSON", "")
-            if pd.isna(raw_json) or str(raw_json).strip() == "": 
-                return pd.Series([0.0, 0.0])
-
+            if pd.isna(raw_json) or str(raw_json).strip() == "": return pd.Series([0.0, 0.0])
             try:
                 dati = json.loads(str(raw_json))
                 incassi = dati.get("incassi", [])
@@ -1146,19 +1138,15 @@ def render_dashboard():
                             if isinstance(v, dict) and "Stato" in v:
                                 dati_reali = v
                                 break 
-                    
                     stato = str(dati_reali.get("Stato", "")).lower().strip()
                     if "fatturato" in stato:
                         t_netto += pulisci_per_calcoli(dati_reali.get("Importo netto €", 0))
                         t_lordo += pulisci_per_calcoli(dati_reali.get("Importo lordo €", 0))
-            except: 
-                return pd.Series([0.0, 0.0])
+            except: return pd.Series([0.0, 0.0])
             return pd.Series([t_netto, t_lordo])
 
         # --- PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        
-        # Calcolo Totali
         df["_Piano_Netto_Calc"] = df.apply(calcola_totale_piano, axis=1)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
@@ -1169,13 +1157,12 @@ def render_dashboard():
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno_str = c_filt.selectbox("Filtra Dashboard e Archivio per Anno:", anni_opts)
-        
         if sel_anno_str != "TOTALE":
             df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
             df_filtered = df.copy()
 
-        # --- KPI CARDS (Restano basate sul FATTURATO) ---
+        # --- KPI CARDS (SETTORI) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -1185,15 +1172,12 @@ def render_dashboard():
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
-            
             fmt_netto = forza_testo_visivo(tot_netto_settore).replace("€ ", "")
             fmt_lordo = forza_testo_visivo(tot_lordo_settore).replace("€ ", "")
             
             card_html = f"""
             <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
-                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
-                    {nome}
-                </div>
+                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">{nome}</div>
                 <div style="display: flex; justify-content: space-around; align-items: center;">
                     <div style="text-align:center;">
                         <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
@@ -1205,19 +1189,44 @@ def render_dashboard():
                         <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
                     </div>
                 </div>
-                <div style="font-size:11px; color:#ccece6; margin-top:10px;">
-                    {len(d_s)} Commesse ({sel_anno_str})
+                <div style="font-size:11px; color:#ccece6; margin-top:10px;">{len(d_s)} Commesse ({sel_anno_str})</div>
+            </div>"""
+            with col: st.markdown(card_html, unsafe_allow_html=True)
+        
+        # --- KPI CARD (TOTALE GENERALE A TUTTA PAGINA) ---
+        tot_netto_gen = df_filtered['_Fatt_Netto_Calc'].sum()
+        tot_lordo_gen = df_filtered['_Fatt_Lordo_Calc'].sum()
+        fmt_netto_gen = forza_testo_visivo(tot_netto_gen).replace("€ ", "")
+        fmt_lordo_gen = forza_testo_visivo(tot_lordo_gen).replace("€ ", "")
+
+        card_total_html = f"""
+        <div style="background-color:#092a33; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white; margin-top:20px;">
+            <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">TOTALE</div>
+            <div style="display: flex; justify-content: space-around; align-items: center;">
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
+                    <div style="font-size:24px; font-weight:bold;">€ {fmt_netto_gen}</div>
+                </div>
+                <div style="width:1px; height:40px; background-color:rgba(255,255,255,0.3);"></div>
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
+                    <div style="font-size:24px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo_gen}</div>
+                </div>
+                <div style="width:1px; height:40px; background-color:rgba(255,255,255,0.3);"></div>
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">COMMESSE</div>
+                    <div style="font-size:24px; font-weight:bold;">{len(df_filtered)}</div>
                 </div>
             </div>
-            """
-            with col: st.markdown(card_html, unsafe_allow_html=True)
+            <div style="font-size:11px; color:#ccece6; margin-top:5px;">Dati Aggregati ({sel_anno_str})</div>
+        </div>"""
+        st.markdown(card_total_html, unsafe_allow_html=True)
 
         st.markdown("---")
         st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
 
         # --- GESTIONE ARCHIVIO ---
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
-
         c_title, c_actions = st.columns([1, 1], gap="large")
         with c_title: 
             st.markdown("<h3 style='text-align: left; margin-top:0;'>ARCHIVIO</h3>", unsafe_allow_html=True)
@@ -1254,9 +1263,8 @@ def render_dashboard():
         if not df.empty:
             df_to_edit = df_filtered.copy()
 
-            # --- LOGICA COLORI / STATI ---
             def calcola_stato_colore(row):
-                # 🔴 PRIORITÀ 1: ROSSO (Pagamenti Pendenti)
+                # 🟣 PRIORITÀ 1: FUCSIA
                 try:
                     raw_json = row.get("Dati_JSON", "{}")
                     if not pd.isna(raw_json) and str(raw_json).strip() != "":
@@ -1268,84 +1276,45 @@ def render_dashboard():
                                     s_pag = it.get("Stato", "")
                                     i_val = pulisci_per_calcoli(it.get("Importo", 0))
                                     if s_pag == "Da pagare" and abs(i_val) > 0.01:
-                                        return "🔴"
-                except:
-                    pass
-
-                # 🟡 PRIORITÀ 2: GIALLO (Stato Operativo)
+                                        return "🟣"
+                except: pass
+                
+                # 🟡 PRIORITÀ 2: GIALLO
                 stato_raw = str(row.get("Stato", "")).strip().lower()
-                if stato_raw in ["aperta", "in attesa"]: return "🟡"
-                if "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
-
+                if stato_raw in ["aperta", "in attesa"] or "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
+                
                 # 🟢 DEFAULT: VERDE
                 return "🟢"
 
-            # Applichiamo la logica
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
             
-            # --- AGGIUNTA COLONNA DI SELEZIONE ---
-            if "Seleziona" not in df_to_edit.columns:
-                 df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
-            else:
-                 df_to_edit["Seleziona"] = st.session_state["select_all_state"]
+            if "Seleziona" not in df_to_edit.columns: df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
+            else: df_to_edit["Seleziona"] = st.session_state["select_all_state"]
 
             cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Fatturato", "Settore_Norm"] 
             df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-            # --- POPOLAMENTO E RINOMINA COLONNE CALCOLATE ---
-            # 1. Totale Netto Commessa (Somma Piano Economico)
             if "_Piano_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Commessa"] = df_filtered["_Piano_Netto_Calc"]
-            # 2. Fatturati
             if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Fatturato"] = df_filtered["_Fatt_Netto_Calc"]
             if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo Fatturato"] = df_filtered["_Fatt_Lordo_Calc"]
 
-            # Formattazione Colonne Monetarie
             for col_name in ["Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]:
                 if col_name in df_to_edit.columns:
                     df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-            # Selezione colonne finali con ORDINAMENTO e NOMI richiesti
-            cols_to_show = [
-                "Seleziona", 
-                "🚦 STATO", 
-                "Codice", 
-                "Stato", 
-                "Anno", 
-                "Cliente", 
-                "Nome Commessa", 
-                "Settore", 
-                "Totale Netto Commessa",  # Nuova Colonna
-                "Totale Netto Fatturato", # Rinomina
-                "Totale Lordo Fatturato"  # Rinomina
-            ]
+            cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-            st.caption("LEGENDA: 🔴 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
+            st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
 
-            # --- RENDER TABELLA ---
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
                 column_config={
-                    # Configurazione per "Autosize" e Allineamento
                     "Seleziona": st.column_config.CheckboxColumn("☑️", default=False, width="small"),
                     "🚦 STATO": st.column_config.Column("ℹ️", width="small", help="Stato calcolato"),
-                    
-                    # Configurazioni Colonne Valuta
-                    "Totale Netto Commessa": st.column_config.TextColumn(
-                        "Tot. Commessa (Netto)", 
-                        help="Totale Netto del Piano Economico (Previsto)", 
-                        width="medium"
-                    ),
-                    "Totale Netto Fatturato": st.column_config.TextColumn(
-                        "Fatturato (Netto)", 
-                        help="Totale Netto effettivamente Fatturato", 
-                        width="medium"
-                    ),
-                    "Totale Lordo Fatturato": st.column_config.TextColumn(
-                        "Fatturato (Lordo)", 
-                        help="Totale Lordo effettivamente Fatturato", 
-                        width="medium"
-                    ),
+                    "Totale Netto Commessa": st.column_config.TextColumn("Tot. Commessa (Netto)", help="Totale Netto del Piano Economico (Previsto)", width="medium"),
+                    "Totale Netto Fatturato": st.column_config.TextColumn("Fatturato (Netto)", help="Totale Netto effettivamente Fatturato", width="medium"),
+                    "Totale Lordo Fatturato": st.column_config.TextColumn("Fatturato (Lordo)", help="Totale Lordo effettivamente Fatturato", width="medium"),
                 },
                 disabled=[c for c in actual_cols if c != "Seleziona"], 
                 use_container_width=True,
@@ -1354,30 +1323,22 @@ def render_dashboard():
                 key="archive_editor"
             )
 
-            # --- AZIONI SULLE RIGHE SELEZIONATE ---
             rows_selected = edited_df[edited_df["Seleziona"] == True]
-            
             st.markdown("<br>", unsafe_allow_html=True)
             col_mod, col_del, col_space = st.columns([0.3, 0.3, 0.4])
 
-            # TASTO MODIFICA
             with col_mod:
                 if st.button("✏️ MODIFICA RIGA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
-                        codice_target = rows_selected.iloc[0]["Codice"]
-                        st.session_state["edit_codice_commessa"] = codice_target
+                        st.session_state["edit_codice_commessa"] = rows_selected.iloc[0]["Codice"]
                         st.rerun()
-                    elif len(rows_selected) == 0:
-                        st.warning("Seleziona almeno una riga per modificarla.")
-                    else:
-                        st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
+                    elif len(rows_selected) == 0: st.warning("Seleziona almeno una riga.")
+                    else: st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
-            # TASTO ELIMINA
             with col_del:
                 if not rows_selected.empty:
                     if st.button(f"🗑️ ELIMINA {len(rows_selected)} COMMESSE", type="primary", use_container_width=True):
-                        codici_da_eliminare = rows_selected["Codice"].tolist()
-                        elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+                        elimina_record_batch(rows_selected["Codice"].tolist(), "Foglio1", "Codice")
                 else:
                     st.button("🗑️ ELIMINA", disabled=True, use_container_width=True)
                 
@@ -1561,6 +1522,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
