@@ -1518,17 +1518,15 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
 
-# --- 7. GESTIONE PREVENTIVI (NUOVO MODULO) ---
+# --- 7. GESTIONE PREVENTIVI (CON ANTEPRIMA & EXPORT) ---
 def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
     # Helper per ID univoco
     def get_next_prev_id(tipo):
-        # Prefissi diversi per Rilievo (PR-RIL) e Archeologia (PR-ARC)
         prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
-        
         df_prev = carica_dati("Preventivi")
         max_n = 0
         if not df_prev.empty and "Codice" in df_prev.columns:
@@ -1540,23 +1538,22 @@ def render_preventivi_page():
                     except: pass
         return f"{prefix_str}{max_n + 1:03d}"
 
+    # Helper per formattazione valuta
+    fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
     # --- TAB 1: CREAZIONE ---
     with tab_new:
-        # 1. SCELTA TIPOLOGIA
         st.info("Seleziona la tipologia per generare il codice corretto:")
         tipo_prev = st.radio("TIPOLOGIA PREVENTIVO:", ["RILIEVO", "ARCHEOLOGIA"], horizontal=True)
         st.markdown("---")
 
         c1, c2 = st.columns([1, 3])
-        
-        # Caricamento Clienti
         df_cli = carica_dati("Clienti")
         nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
 
         with c1:
-            # Genera codice in base alla scelta sopra
             new_code = get_next_prev_id(tipo_prev)
             st.text_input("Codice Preventivo", value=new_code, disabled=True)
             data_prev = st.date_input("Data Emissione", value=date.today())
@@ -1568,7 +1565,6 @@ def render_preventivi_page():
 
         st.markdown("### Voci di Costo")
         
-        # Inizializza session state per le righe se non esiste o se è stato resettato
         if "prev_lines" not in st.session_state:
             st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
 
@@ -1584,7 +1580,7 @@ def render_preventivi_page():
             num_rows="dynamic",
             column_config=col_config,
             use_container_width=True,
-            key=f"editor_prev_{tipo_prev}" # Chiave dinamica per evitare conflitti
+            key=f"editor_prev_{tipo_prev}"
         )
 
         # Calcoli
@@ -1599,47 +1595,114 @@ def render_preventivi_page():
                     q = float(row.get("Qta", 0))
                     p = float(row.get("Prezzo Unitario", 0))
                     iva_p = int(row.get("IVA %", 22))
-                    
                     parziale = q * p
                     val_iva = parziale * (iva_p / 100)
-                    
                     tot_netto += parziale
                     tot_iva += val_iva
-                    dettagli_list.append(row.to_dict())
+                    dettagli_list.append({
+                        "desc": d, "qta": q, "prezzo": p, "iva_p": iva_p, 
+                        "parziale": parziale, "val_iva": val_iva
+                    })
             except: pass
         
         tot_lordo = tot_netto + tot_iva
 
         st.markdown("---")
         k1, k2, k3 = st.columns(3)
-        fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         k1.metric("Totale Netto", fmt(tot_netto))
         k2.metric("Totale IVA", fmt(tot_iva))
         k3.metric("TOTALE PREVENTIVO", fmt(tot_lordo))
 
-        if st.button("💾 SALVA PREVENTIVO", type="primary", use_container_width=True):
-            if not cli_sel or not oggetto_prev:
-                st.error("Inserisci Cliente e Oggetto!")
-            elif tot_netto == 0:
-                st.error("Inserisci almeno una voce di costo.")
-            else:
-                record = {
-                    "Codice": new_code,
-                    "Tipo": tipo_prev,
-                    "Data": str(data_prev),
-                    "Cliente": cli_sel,
-                    "Oggetto": oggetto_prev,
-                    "Totale Netto": tot_netto,
-                    "Totale Lordo": tot_lordo,
-                    "Stato": stato_prev,
-                    "Dati_JSON": json.dumps(dettagli_list)
-                }
-                salva_record(record, "Preventivi", "Codice", "new")
-                # Reset dataframe
-                st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
-                st.success(f"Preventivo {new_code} salvato correttamente!")
-                time.sleep(1.5)
-                st.rerun()
+        # --- SEZIONE ANTEPRIMA ---
+        st.markdown("---")
+        with st.expander("👁️ ANTEPRIMA DI STAMPA (Fac-simile Word)", expanded=False):
+            # Generazione HTML per anteprima
+            righe_html = ""
+            for item in dettagli_list:
+                righe_html += f"""
+                <tr>
+                    <td style="padding:8px; border-bottom:1px solid #ddd;">{item['desc']}</td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; text-align:center;">{item['qta']}</td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">{fmt(item['prezzo'])}</td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">{fmt(item['parziale'])}</td>
+                </tr>
+                """
+            
+            html_template = f"""
+            <div style="background-color: white; color: black; padding: 40px; border: 1px solid #ccc; font-family: 'Times New Roman', serif; max-width: 800px; margin: auto;">
+                <div style="text-align: right; font-size: 12px; color: #666;">
+                    Codice: <b>{new_code}</b><br>Data: {data_prev.strftime('%d/%m/%Y')}
+                </div>
+                <div style="margin-top: 20px;">
+                    <b>Spett.le Committente</b><br>
+                    {cli_sel if cli_sel else "[Seleziona Cliente]"}
+                </div>
+                <h3 style="text-align: center; margin-top: 40px; text-transform: uppercase;">Preventivo: {oggetto_prev if oggetto_prev else "..."}</h3>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 14px;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="padding:10px; text-align:left; border-bottom:2px solid #000;">Descrizione</th>
+                            <th style="padding:10px; text-align:center; border-bottom:2px solid #000; width:60px;">Q.tà</th>
+                            <th style="padding:10px; text-align:right; border-bottom:2px solid #000; width:100px;">Prezzo Unit.</th>
+                            <th style="padding:10px; text-align:right; border-bottom:2px solid #000; width:100px;">Importo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {righe_html}
+                    </tbody>
+                </table>
+
+                <div style="margin-top: 30px; text-align: right;">
+                    <p style="margin: 5px;">Imponibile: <b>{fmt(tot_netto)}</b></p>
+                    <p style="margin: 5px;">IVA: <b>{fmt(tot_iva)}</b></p>
+                    <h3 style="margin-top: 10px; border-top: 1px solid #000; padding-top: 10px;">TOTALE: {fmt(tot_lordo)}</h3>
+                </div>
+                
+                <div style="margin-top: 50px; font-size: 12px; color: #666; text-align: center;">
+                    <p>Documento generato da SISMA MANAGER - {date.today().year}</p>
+                </div>
+            </div>
+            """
+            st.markdown(html_template, unsafe_allow_html=True)
+
+        # --- AZIONI FINALI ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_save, c_down = st.columns([1, 1])
+        
+        with c_save:
+            if st.button("💾 SALVA PREVENTIVO NEL DATABASE", type="primary", use_container_width=True):
+                if not cli_sel or not oggetto_prev:
+                    st.error("Inserisci Cliente e Oggetto!")
+                elif tot_netto == 0:
+                    st.error("Inserisci almeno una voce di costo.")
+                else:
+                    record = {
+                        "Codice": new_code,
+                        "Tipo": tipo_prev,
+                        "Data": str(data_prev),
+                        "Cliente": cli_sel,
+                        "Oggetto": oggetto_prev,
+                        "Totale Netto": tot_netto,
+                        "Totale Lordo": tot_lordo,
+                        "Stato": stato_prev,
+                        "Dati_JSON": json.dumps(dettagli_list)
+                    }
+                    salva_record(record, "Preventivi", "Codice", "new")
+                    st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
+                    st.success(f"Preventivo {new_code} salvato correttamente!")
+                    time.sleep(1.5)
+                    st.rerun()
+
+        with c_down:
+            # Download come file HTML (Word lo apre come documento formattato)
+            st.download_button(
+                label="📥 SCARICA DOCUMENTO (.html/doc)",
+                data=html_template,
+                file_name=f"Preventivo_{new_code.replace('/','_')}.html",
+                mime="text/html",
+                use_container_width=True
+            )
 
     # --- TAB 2: ARCHIVIO ---
     with tab_arch:
@@ -1648,37 +1711,25 @@ def render_preventivi_page():
         if df_prev.empty:
             st.info("Nessun preventivo in archivio.")
         else:
-            # Filtri
             c_fil1, c_fil2, c_fil3 = st.columns([1, 1, 2])
             filtro_tipo = c_fil1.selectbox("Filtra Tipo", ["TUTTI", "RILIEVO", "ARCHEOLOGIA"])
             filtro_stato = c_fil2.selectbox("Filtra Stato", ["TUTTI", "BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
             search_txt = c_fil3.text_input("🔍 Cerca (Cliente/Oggetto/Codice)")
 
-            # Applicazione Filtri
             df_show = df_prev.copy()
-            if filtro_tipo != "TUTTI":
-                df_show = df_show[df_show["Tipo"] == filtro_tipo]
-            if filtro_stato != "TUTTI":
-                df_show = df_show[df_show["Stato"] == filtro_stato]
-            if search_txt:
-                df_show = df_show[df_show.apply(lambda row: search_txt.lower() in str(row.values).lower(), axis=1)]
+            if filtro_tipo != "TUTTI": df_show = df_show[df_show["Tipo"] == filtro_tipo]
+            if filtro_stato != "TUTTI": df_show = df_show[df_show["Stato"] == filtro_stato]
+            if search_txt: df_show = df_show[df_show.apply(lambda row: search_txt.lower() in str(row.values).lower(), axis=1)]
 
-            # Formattazione
             target_cols = ["Codice", "Tipo", "Data", "Cliente", "Oggetto", "Totale Lordo", "Stato"]
             final_cols = [c for c in target_cols if c in df_show.columns]
             
             if "Totale Lordo" in df_show.columns:
                 df_show["Totale Lordo"] = df_show["Totale Lordo"].apply(lambda x: fmt(float(x)) if pd.notnull(x) and x!="" else "")
 
-            st.dataframe(
-                df_show[final_cols],
-                use_container_width=True,
-                hide_index=True,
-                height=500
-            )
+            st.dataframe(df_show[final_cols], use_container_width=True, hide_index=True, height=500)
             
             st.caption("Per eliminare un preventivo, seleziona il codice qui sotto:")
-            
             c_del1, c_del2 = st.columns([3, 1])
             codici_disp = df_show["Codice"].unique().tolist()
             sel_del = c_del1.selectbox("Seleziona codice da eliminare", [""] + codici_disp)
@@ -1714,6 +1765,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
