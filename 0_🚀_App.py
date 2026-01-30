@@ -1345,8 +1345,8 @@ def render_dashboard():
 
             # FIX ERRORE JS: Padding come dizionario esplicito
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
-                height=350,
-                padding={"left": 20, "right": 20, "top": 40, "bottom": 40}
+                height=400,
+                padding={"left": 20, "right": 20, "top": 20, "bottom": 20}
             ).configure_view(
                 strokeWidth=0
             )
@@ -1987,6 +1987,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
