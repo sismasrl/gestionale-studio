@@ -1713,11 +1713,7 @@ elif "> PREVENTIVI" in scelta:
 elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
-    render_societa_page()
-
-
-
-
+    render_organigramma_page()
 
 
 
