@@ -1448,7 +1448,7 @@ def render_dashboard():
             cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-            st.caption("LEGENDA: 🔴 Ci sono pagamenti da saldare | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
+            st.caption("LEGENDA: 🔴 Ci sono pagamenti da saldare | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldata")
 
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
@@ -1940,6 +1940,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
