@@ -1300,9 +1300,7 @@ def render_dashboard():
             
             # Calcolo Percentuali e Formattazione Etichette
             df_chart["Percentuale"] = df_chart["Fatturato Netto"] / tot_netto_gen
-            # Etichetta Valore (es: € 10.000) - arrotondato all'euro per pulizia
             df_chart["Label_Valore"] = df_chart["Fatturato Netto"].apply(lambda x: f"€ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            # Etichetta Percentuale (es: 33.3%)
             df_chart["Label_Perc"] = df_chart["Percentuale"].apply(lambda x: f"{x:.1%}")
 
             base = alt.Chart(df_chart).encode(
@@ -1316,15 +1314,16 @@ def render_dashboard():
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
-            # Testo 1: Valore Monetario (Bianco)
-            text_val = base.mark_text(radius=140).encode(
+            # Testo 1: Valore Monetario (Più grande e più lontano)
+            text_val = base.mark_text(radius=170, size=16).encode(
                 text=alt.Text("Label_Valore"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
-            # Testo 2: Percentuale (Grigio chiaro, sotto il valore)
-            text_perc = base.mark_text(radius=140, dy=15).encode(
+            # Testo 2: Percentuale (Leggermente più piccolo, sotto il valore)
+            # dy aumentato a 22 per compensare la dimensione del font
+            text_perc = base.mark_text(radius=170, dy=22, size=13).encode(
                 text=alt.Text("Label_Perc"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("#d0d0d0") 
@@ -1332,10 +1331,10 @@ def render_dashboard():
             
             # Etichetta Centrale (Totale)
             text_center = alt.Chart(pd.DataFrame({'text': [f'€ {fmt_netto_gen}']})).mark_text(
-                text=f'€ {fmt_netto_gen}', size=20, font='Arial', color='white'
+                text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            final_chart = (pie + text_val + text_perc).properties(
+            final_chart = (pie + text_val + text_perc + text_center).properties(
                 title="Distribuzione Fatturato Netto per Settore"
             ).configure_view(strokeWidth=0).configure_title(color='white')
 
@@ -1973,6 +1972,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
