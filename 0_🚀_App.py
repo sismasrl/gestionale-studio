@@ -1470,38 +1470,38 @@ def render_dashboard():
             rows_selected = edited_df[edited_df["Seleziona"] == True]
             
             st.markdown("<br>", unsafe_allow_html=True)
-            col_mod, col_del, col_space = st.columns([0.3, 0.3, 0.4])
+            col_mod, col_del = st.columns([0.4, 0.6]) # Spazio per Modifica e Zona Pericolo
 
-            # TASTO MODIFICA (Invariato)
+            # 1. TASTO MODIFICA (Visibile solo se 1 riga selezionata o nessuna)
             with col_mod:
-                if st.button("✏️ MODIFICA RIGA SELEZIONATA", use_container_width=True):
+                if st.button("✏️ MODIFICA COMMESSA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
                         codice_target = rows_selected.iloc[0]["Codice"]
                         st.session_state["edit_codice_commessa"] = codice_target
                         st.rerun()
                     elif len(rows_selected) == 0:
-                        st.warning("Seleziona almeno una riga per modificarla.")
+                        st.warning("Seleziona una riga per modificarla.")
                     else:
                         st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
-            # TASTO ELIMINA (MODIFICATO CON SICUREZZA)
+            # 2. TASTO ELIMINA (Nascosto in Expander - Stile Richiesto)
             with col_del:
                 if not rows_selected.empty:
-                    # 1. Checkbox di sicurezza: il pulsante è disabilitato finché non viene spuntata
-                    confirm_check = st.checkbox("Sblocca eliminazione", key="chk_delete_safety", help="Spunta questa casella per abilitare il tasto di eliminazione.")
-                    
-                    # 2. Pulsante Elimina (Disabilitato se confirm_check è False)
-                    btn_label = f"🗑️ ELIMINA {len(rows_selected)} COMMESSE"
-                    if st.button(btn_label, type="primary", use_container_width=True, disabled=not confirm_check):
-                        codici_da_eliminare = rows_selected["Codice"].tolist()
-                        elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
-                        # Feedback visivo e ricaricamento
-                        st.success(f"Operazione completata: {len(rows_selected)} commesse eliminate.")
-                        time.sleep(1.5)
-                        st.rerun()
+                    # Lo stile esatto che hai chiesto: Expander -> Bottone
+                    with st.expander(f"⚠️ ZONA PERICOLO ({len(rows_selected)} selez.)"):
+                        st.markdown("L'eliminazione è definitiva.")
+                        if st.button("🗑️ ELIMINA DEFINITIVAMENTE", type="primary", key="btn_del_dashboard"):
+                            codici_da_eliminare = rows_selected["Codice"].tolist()
+                            
+                            # Esegue l'eliminazione
+                            elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
+                            
+                            st.success(f"Eliminati {len(codici_da_eliminare)} record.")
+                            time.sleep(1)
+                            st.rerun()
                 else:
-                    # Pulsante disabilitato se non c'è selezione
-                    st.button("🗑️ ELIMINA", disabled=True, use_container_width=True)
+                    # Messaggio vuoto o placeholder per mantenere l'allineamento
+                    st.write("")
                 
 # --- 6. ORGANIGRAMMA ---
 def render_organigramma():
@@ -1940,6 +1940,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
