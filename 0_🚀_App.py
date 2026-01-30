@@ -1345,7 +1345,7 @@ def render_dashboard():
 
             # Titolo rimosso e ALTEZZA AUMENTATA A 450
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
-                height=450
+                height=350
             ).configure_view(strokeWidth=0)
 
             st.altair_chart(final_chart, use_container_width=True)
@@ -1982,6 +1982,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
