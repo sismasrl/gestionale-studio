@@ -319,6 +319,9 @@ def importa_excel_batch(uploaded_file):
 # --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
 def render_commessa_form(data=None):
     is_edit = data is not None
+    # --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
+def render_commessa_form(data=None):
+    is_edit = data is not None
     
     # --- HELPER PER NOMI ---
     def inverti_nome(nome_completo):
@@ -372,7 +375,6 @@ def render_commessa_form(data=None):
             st.session_state["form_ref"] = data.get("Referente", "")
             st.session_state["form_tel"] = data.get("Tel Referente", "")
             st.session_state["last_loaded_code"] = val_codice_originale
-            # Reset stato incassi per forzare ricaricamento
             if "stato_incassi" in st.session_state: del st.session_state["stato_incassi"]
     else:
         val_codice_originale = ""
@@ -506,31 +508,18 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
         portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # --- FUNZIONE CRUCIALE: NORMALIZZA COLONNE (MIGRAZIONE DATI VECCHI) ---
+    # --- FUNZIONE NORMALIZZAZIONE COLONNE ---
     def normalizza_colonne_df(df):
-        # 1. Rinomina "Data" -> "Data Saldo" se esiste
-        if "Data" in df.columns:
-            df = df.rename(columns={"Data": "Data Saldo"})
-        # 2. Rinomina "Note" -> "Fattura" se esiste
-        if "Note" in df.columns:
-            df = df.rename(columns={"Note": "Fattura"})
-        # 3. Aggiungi "Data Fattura" se manca
-        if "Data Fattura" not in df.columns:
-            df["Data Fattura"] = None
-        # 4. Aggiungi "Data Saldo" se manca (caso in cui non c'era "Data")
-        if "Data Saldo" not in df.columns:
-            df["Data Saldo"] = None
-        if "Fattura" not in df.columns:
-            df["Fattura"] = ""
-            
-        # 5. Parsing date
+        if "Data" in df.columns: df = df.rename(columns={"Data": "Data Saldo"})
+        if "Note" in df.columns: df = df.rename(columns={"Note": "Fattura"})
+        if "Data Fattura" not in df.columns: df["Data Fattura"] = None
+        if "Data Saldo" not in df.columns: df["Data Saldo"] = None
+        if "Fattura" not in df.columns: df["Fattura"] = ""
         for col in ["Data Saldo", "Data Fattura"]:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
         return df
 
-    # --- 1. PIANO ECONOMICO (INIZIALIZZAZIONE) ---
-    
-    # ⚠️ FIX: Se esiste già in sessione ma con vecchie colonne, lo aggiorniamo al volo!
+    # --- INIZIALIZZAZIONE DATAFRAMES ---
     if "stato_incassi" in st.session_state:
         df_old = st.session_state["stato_incassi"]
         if "Data" in df_old.columns or "Note" in df_old.columns or "Data Fattura" not in df_old.columns:
@@ -539,9 +528,7 @@ def render_commessa_form(data=None):
     cols_incassi_std = ["Voce", "Importo netto €", "IVA %", "Importo lordo €", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
     
     if "stato_incassi" not in st.session_state:
-        # Default NUOVO
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
-        
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
             try:
                 jdata = json.loads(data["Dati_JSON"])
@@ -551,18 +538,13 @@ def render_commessa_form(data=None):
                         if "Importo" in df_temp.columns: df_temp = df_temp.rename(columns={"Importo": "Importo netto €"})
                         if "IVA %" not in df_temp.columns: df_temp["IVA %"] = 22
                         df_temp["Importo lordo €"] = df_temp["Importo netto €"] * (1 + df_temp["IVA %"]/100)
-                        
-                        # Normalizza colonne
                         df_temp = normalizza_colonne_df(df_temp)
-                        
-                        # Ordina e riempi mancanti
                         for c in cols_incassi_std:
                             if c not in df_temp.columns: df_temp[c] = None
                         df_init = df_temp[cols_incassi_std]
             except: pass
         st.session_state["stato_incassi"] = df_init
 
-    # 2. COSTI (05) - Strutture di default corrette
     cols_costi_std = ["Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"] 
     
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
@@ -581,9 +563,7 @@ def render_commessa_form(data=None):
                             if "Socio" in df_t.columns: df_t["Socio"] = df_t["Socio"].apply(inverti_nome)
                         if key_name == "collab" and "Nome" in df_t.columns:
                             df_t = df_t.rename(columns={"Nome": "Collaboratore"})
-                        
                         df_t = normalizza_colonne_df(df_t)
-                        
                         target_cols = extra_cols + cols_costi_std
                         for c in target_cols:
                             if c not in df_t.columns: df_t[c] = 0.0 if c == "Importo" else (None if "Data" in c else "")
@@ -611,15 +591,16 @@ def render_commessa_form(data=None):
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
+        # --- MODIFICA WIDTH: SETTATO A "MEDIUM" PER TUTTE LE COLONNE ---
         col_cfg = {
-            "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
-            "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
-            "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
-            "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
-            "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
-            "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
-            "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
-            "Fattura": st.column_config.TextColumn("N. Fattura")
+            "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True, width="medium"),
+            "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01, width="medium"),
+            "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True, width="medium"),
+            "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True, width="medium"),
+            "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True, width="medium"),
+            "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY", width="medium"),
+            "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY", width="medium"),
+            "Fattura": st.column_config.TextColumn("N. Fattura", width="medium")
         }
         
         edited_incassi = st.data_editor(
@@ -665,19 +646,21 @@ def render_commessa_form(data=None):
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
-        def get_money_col(): return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
+        def get_money_col(): return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01, width="medium")
 
+        # --- CONFIGURAZIONE COMUNE CON WIDTH MEDIUM ---
         common_cols_cfg = {
             "Importo": get_money_col(),
-            "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
-            "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
-            "Fattura": st.column_config.TextColumn("N. Fattura")
+            "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY", width="medium"),
+            "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY", width="medium"),
+            "Fattura": st.column_config.TextColumn("N. Fattura", width="medium")
         }
 
         st.markdown("### SOCI")
         soci_cfg = {
-            "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True),
-            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
+            "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True, width="medium"),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True, width="medium"),
+            "Mansione": st.column_config.TextColumn(width="medium"),
             **common_cols_cfg
         }
         if "Importo" in df_soci_def.columns: df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
@@ -685,7 +668,9 @@ def render_commessa_form(data=None):
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
-            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
+            "Collaboratore": st.column_config.TextColumn(width="medium"),
+            "Mansione": st.column_config.TextColumn(width="medium"),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True, width="medium"),
             **common_cols_cfg
         }
         if "Importo" in df_collab_def.columns: df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
@@ -693,7 +678,8 @@ def render_commessa_form(data=None):
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
-            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
+            "Voce": st.column_config.TextColumn(width="medium"),
+            "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True, width="medium"),
             **common_cols_cfg
         }
         if "Importo" in df_spese_def.columns: df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
@@ -740,7 +726,6 @@ def render_commessa_form(data=None):
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             
-            # JSON: salvataggio con i nuovi campi
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
                 "soci": soci_to_save.to_dict('records'),
@@ -1793,6 +1778,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
