@@ -372,7 +372,7 @@ def render_commessa_form(data=None):
             st.session_state["form_ref"] = data.get("Referente", "")
             st.session_state["form_tel"] = data.get("Tel Referente", "")
             st.session_state["last_loaded_code"] = val_codice_originale
-            # Forziamo il ricaricamento del piano incassi per prendere i dati del JSON
+            # Reset stato incassi per forzare ricaricamento
             if "stato_incassi" in st.session_state: del st.session_state["stato_incassi"]
     else:
         val_codice_originale = ""
@@ -506,31 +506,40 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
         portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # --- FUNZIONE FONDAMENTALE PER NORMALIZZARE LE COLONNE ---
-    def normalizza_df_date_fattura(df):
-        # 1. Mappa nomi vecchi -> nuovi
-        rename_map = {"Data": "Data Saldo", "Note": "Fattura"}
-        df = df.rename(columns=rename_map)
-        
-        # 2. Crea le colonne nuove se mancano
-        if "Data Saldo" not in df.columns: df["Data Saldo"] = None
-        if "Data Fattura" not in df.columns: df["Data Fattura"] = None
-        if "Fattura" not in df.columns: df["Fattura"] = ""
-        
-        # 3. Converte date
+    # --- FUNZIONE CRUCIALE: NORMALIZZA COLONNE (MIGRAZIONE DATI VECCHI) ---
+    def normalizza_colonne_df(df):
+        # 1. Rinomina "Data" -> "Data Saldo" se esiste
+        if "Data" in df.columns:
+            df = df.rename(columns={"Data": "Data Saldo"})
+        # 2. Rinomina "Note" -> "Fattura" se esiste
+        if "Note" in df.columns:
+            df = df.rename(columns={"Note": "Fattura"})
+        # 3. Aggiungi "Data Fattura" se manca
+        if "Data Fattura" not in df.columns:
+            df["Data Fattura"] = None
+        # 4. Aggiungi "Data Saldo" se manca (caso in cui non c'era "Data")
+        if "Data Saldo" not in df.columns:
+            df["Data Saldo"] = None
+        if "Fattura" not in df.columns:
+            df["Fattura"] = ""
+            
+        # 5. Parsing date
         for col in ["Data Saldo", "Data Fattura"]:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-            
         return df
 
-    # --- INIZIALIZZAZIONE DATAFRAMES ---
+    # --- 1. PIANO ECONOMICO (INIZIALIZZAZIONE) ---
     
-    # 1. PIANO INCASSI (04)
-    # Struttura di default corretta
+    # ⚠️ FIX: Se esiste già in sessione ma con vecchie colonne, lo aggiorniamo al volo!
+    if "stato_incassi" in st.session_state:
+        df_old = st.session_state["stato_incassi"]
+        if "Data" in df_old.columns or "Note" in df_old.columns or "Data Fattura" not in df_old.columns:
+            st.session_state["stato_incassi"] = normalizza_colonne_df(df_old)
+
     cols_incassi_std = ["Voce", "Importo netto €", "IVA %", "Importo lordo €", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
     
     if "stato_incassi" not in st.session_state:
-        # Default vuoto
+        # Default NUOVO
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
         
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -539,15 +548,14 @@ def render_commessa_form(data=None):
                 if "incassi" in jdata:
                     df_temp = pd.DataFrame(jdata["incassi"])
                     if not df_temp.empty:
-                        # Fix nomi legacy
                         if "Importo" in df_temp.columns: df_temp = df_temp.rename(columns={"Importo": "Importo netto €"})
                         if "IVA %" not in df_temp.columns: df_temp["IVA %"] = 22
                         df_temp["Importo lordo €"] = df_temp["Importo netto €"] * (1 + df_temp["IVA %"]/100)
                         
-                        # --- NORMALIZZAZIONE COLONNE DATE/FATTURA ---
-                        df_temp = normalizza_df_date_fattura(df_temp)
+                        # Normalizza colonne
+                        df_temp = normalizza_colonne_df(df_temp)
                         
-                        # Assicuriamoci che ci siano tutte le colonne nell'ordine giusto
+                        # Ordina e riempi mancanti
                         for c in cols_incassi_std:
                             if c not in df_temp.columns: df_temp[c] = None
                         df_init = df_temp[cols_incassi_std]
@@ -555,46 +563,36 @@ def render_commessa_form(data=None):
         st.session_state["stato_incassi"] = df_init
 
     # 2. COSTI (05) - Strutture di default corrette
-    cols_costi_std = ["Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"] # Colonne base comuni
+    cols_costi_std = ["Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"] 
     
-    # Default Soci
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
-    # Default Collaboratori
     df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
-    # Default Spese
     df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
 
     if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
         try:
             jdata = json.loads(data["Dati_JSON"])
-            
-            # Helper interno per caricare e normalizzare le tabelle costi
             def load_cost_table(key_name, df_default, extra_cols=[]):
                 if key_name in jdata:
                     df_t = pd.DataFrame(jdata[key_name])
                     if not df_t.empty:
-                        # Fix nomi specifici
                         if key_name == "soci":
                             if "Ruolo" in df_t.columns: df_t = df_t.rename(columns={"Ruolo": "Mansione"})
                             if "Socio" in df_t.columns: df_t["Socio"] = df_t["Socio"].apply(inverti_nome)
                         if key_name == "collab" and "Nome" in df_t.columns:
                             df_t = df_t.rename(columns={"Nome": "Collaboratore"})
                         
-                        # Normalizza date e fattura
-                        df_t = normalizza_df_date_fattura(df_t)
+                        df_t = normalizza_colonne_df(df_t)
                         
-                        # Completa colonne
                         target_cols = extra_cols + cols_costi_std
                         for c in target_cols:
-                            if c not in df_t.columns: 
-                                df_t[c] = 0.0 if c == "Importo" else (None if "Data" in c else "")
+                            if c not in df_t.columns: df_t[c] = 0.0 if c == "Importo" else (None if "Data" in c else "")
                         return df_t[target_cols]
                 return df_default
 
             df_soci_def = load_cost_table("soci", df_soci_def, ["Socio", "Mansione"])
             df_collab_def = load_cost_table("collab", df_collab_def, ["Collaboratore", "Mansione"])
             df_spese_def = load_cost_table("spese", df_spese_def, ["Voce"])
-
         except: pass
 
     # 04. PIANO ECONOMICO (RENDER)
@@ -619,7 +617,6 @@ def render_commessa_form(data=None):
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
             "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
-            # NUOVE COLONNE
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
             "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
             "Fattura": st.column_config.TextColumn("N. Fattura")
@@ -629,7 +626,7 @@ def render_commessa_form(data=None):
             st.session_state["stato_incassi"], 
             num_rows="dynamic", 
             column_config=col_cfg, 
-            column_order=cols_incassi_std, # Ordine forzato
+            column_order=cols_incassi_std,
             use_container_width=True, 
             key="ed_inc"
         )
@@ -670,7 +667,6 @@ def render_commessa_form(data=None):
         top_metrics = st.container()
         def get_money_col(): return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
 
-        # Configurazione comune colonne Date/Fattura
         common_cols_cfg = {
             "Importo": get_money_col(),
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
@@ -1797,6 +1793,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
