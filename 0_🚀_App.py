@@ -453,9 +453,9 @@ def render_commessa_form(data=None):
         st.markdown("<br>", unsafe_allow_html=True)
         
         SERVIZI_LIST = sorted([
-            "Archeologia Preventiva", "Assistenza Archeologica", "Campionamento Malte", "Drone",
+            "Archeologia dell'Architettura", "Assistenza Archeologica", "Campionamento Malte", "Drone",
             "Indagine Diagnostica", "Inquadramento Archeologico Preliminare", "Modellazione 3D",
-            "Modellazione BIM", "Relazione Archeologica", "Relazione Storica", "Restituzione CAD",
+            "Modellazione BIM", "Progettazione e Assistenza Archeologica", "Relazione Archeologica", "Relazione Storica", "Restituzione CAD",
             "Restituzione Materico", "Restituzione Fotopiani", "Restituzione Quadro Fessurativo",
             "Ricerca Archeologica", "Rilievo Fotogrammetrico", "Rilievo GPS", "Rilievo Laser Scanner",
             "Rilievo Topografico", "RTI", "Saggi e Trincee", "Scavo Archeologico",
@@ -1029,6 +1029,31 @@ def render_dashboard():
     st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
 
     # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT) ---
+    def pulisci_per_calcoli(val):# --- 5. DASHBOARD & IMPORT ---
+def render_dashboard():
+    # Carica i dati aggiornati
+    df = carica_dati("Foglio1")
+    
+    # --- CSS HACK: Allineamento centrato prime due colonne ---
+    st.markdown("""
+    <style>
+    /* Tenta di centrare il contenuto delle prime due colonne del Data Editor */
+    div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="gridcell"]:nth-child(1),
+    div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="gridcell"]:nth-child(2) {
+        justify-content: center !important;
+        text-align: center !important;
+    }
+    div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="columnheader"]:nth-child(1) div,
+    div[data-testid="stDataEditor"] div[role="grid"] div[role="row"] div[role="columnheader"]:nth-child(2) div {
+        justify-content: center !important;
+        text-align: center !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
+
+    # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT) ---
     def pulisci_per_calcoli(val):
         if pd.isna(val) or str(val).strip() == "": 
             return 0.0
@@ -1056,15 +1081,9 @@ def render_dashboard():
 
     # --- 2. FUNZIONE PER LA VISUALIZZAZIONE (Stringa Blindata) ---
     def forza_testo_visivo(val):
-        # 1. Ottieni il numero puro
         val_float = pulisci_per_calcoli(val)
-        
-        # 2. Formatta in standard US con DUE DECIMALI FISSI (.2f)
         base = "{:,.2f}".format(val_float)
-        
-        # 3. Inversione manuale caratteri per l'Italiano
         finale = base.replace(",", "X").replace(".", ",").replace("X", ".")
-        
         return f"€ {finale}"
 
     # --- GESTIONE STATO MODIFICA ---
@@ -1099,7 +1118,7 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- CALCOLO TOTALE PIANO ECONOMICO (NUOVO) ---
+        # --- CALCOLO TOTALE PIANO ECONOMICO (Somma Importi Netti Preventivati) ---
         def calcola_totale_piano(row):
             t_piano = 0.0
             raw_json = row.get("Dati_JSON", "")
@@ -1107,7 +1126,7 @@ def render_dashboard():
             
             try:
                 dati = json.loads(str(raw_json))
-                # Somma tutti gli 'Importo netto €' presenti in 'incassi' (Piano Economico)
+                # Somma tutti gli 'Importo netto €' presenti in 'incassi' (che è il Piano Economico)
                 incassi = dati.get("incassi", [])
                 for item in incassi:
                     if isinstance(item, dict):
@@ -1146,7 +1165,8 @@ def render_dashboard():
 
         # --- PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
-        # Calcolo colonne nascoste per ordinamento e visualizzazione
+        
+        # Calcolo Totali
         df["_Piano_Netto_Calc"] = df.apply(calcola_totale_piano, axis=1)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
@@ -1163,7 +1183,7 @@ def render_dashboard():
         else:
             df_filtered = df.copy()
 
-        # --- KPI CARDS ---
+        # --- KPI CARDS (Restano basate sul FATTURATO) ---
         palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
@@ -1171,7 +1191,6 @@ def render_dashboard():
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
-            # Nota: Le card mostrano il Fatturato (KPI finanziari)
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
@@ -1245,7 +1264,7 @@ def render_dashboard():
 
             # --- LOGICA COLORI / STATI ---
             def calcola_stato_colore(row):
-                # 🟣 PRIORITÀ 1: FUCSIA (Pagamenti Pendenti)
+                # 🔴 PRIORITÀ 1: ROSSO (Pagamenti Pendenti)
                 try:
                     raw_json = row.get("Dati_JSON", "{}")
                     if not pd.isna(raw_json) and str(raw_json).strip() != "":
@@ -1257,7 +1276,7 @@ def render_dashboard():
                                     s_pag = it.get("Stato", "")
                                     i_val = pulisci_per_calcoli(it.get("Importo", 0))
                                     if s_pag == "Da pagare" and abs(i_val) > 0.01:
-                                        return "🟣"
+                                        return "🔴"
                 except:
                     pass
 
@@ -1281,8 +1300,10 @@ def render_dashboard():
             cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Fatturato", "Settore_Norm"] 
             df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-            # --- POPOLAMENTO COLONNE CALCOLATE PER VISUALIZZAZIONE ---
+            # --- POPOLAMENTO E RINOMINA COLONNE CALCOLATE ---
+            # 1. Totale Netto Commessa (Somma Piano Economico)
             if "_Piano_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Commessa"] = df_filtered["_Piano_Netto_Calc"]
+            # 2. Fatturati
             if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Fatturato"] = df_filtered["_Fatt_Netto_Calc"]
             if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo Fatturato"] = df_filtered["_Fatt_Lordo_Calc"]
 
@@ -1291,7 +1312,7 @@ def render_dashboard():
                 if col_name in df_to_edit.columns:
                     df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-            # Selezione colonne finali con ORDINAMENTO richiesto
+            # Selezione colonne finali con ORDINAMENTO e NOMI richiesti
             cols_to_show = [
                 "Seleziona", 
                 "🚦 STATO", 
@@ -1301,21 +1322,23 @@ def render_dashboard():
                 "Cliente", 
                 "Nome Commessa", 
                 "Settore", 
-                "Totale Netto Commessa", 
-                "Totale Netto Fatturato", 
-                "Totale Lordo Fatturato"
+                "Totale Netto Commessa",  # Nuova Colonna
+                "Totale Netto Fatturato", # Rinomina
+                "Totale Lordo Fatturato"  # Rinomina
             ]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-            st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
+            st.caption("LEGENDA: 🔴 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
 
             # --- RENDER TABELLA ---
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
                 column_config={
+                    # Configurazione per "Autosize" e Allineamento
                     "Seleziona": st.column_config.CheckboxColumn("☑️", default=False, width="small"),
                     "🚦 STATO": st.column_config.Column("ℹ️", width="small", help="Stato calcolato"),
                     
+                    # Configurazioni Colonne Valuta
                     "Totale Netto Commessa": st.column_config.TextColumn(
                         "Tot. Commessa (Netto)", 
                         help="Totale Netto del Piano Economico (Previsto)", 
@@ -1349,7 +1372,6 @@ def render_dashboard():
             with col_mod:
                 if st.button("✏️ MODIFICA RIGA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
-                        # Recupera il codice e attiva la modalità modifica
                         codice_target = rows_selected.iloc[0]["Codice"]
                         st.session_state["edit_codice_commessa"] = codice_target
                         st.rerun()
@@ -1360,7 +1382,6 @@ def render_dashboard():
 
             # TASTO ELIMINA
             with col_del:
-                # Per sicurezza, mostriamo un expander o controlliamo lo stato
                 if not rows_selected.empty:
                     if st.button(f"🗑️ ELIMINA {len(rows_selected)} COMMESSE", type="primary", use_container_width=True):
                         codici_da_eliminare = rows_selected["Codice"].tolist()
@@ -1548,6 +1569,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
