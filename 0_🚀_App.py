@@ -372,6 +372,7 @@ def render_commessa_form(data=None):
             st.session_state["form_ref"] = data.get("Referente", "")
             st.session_state["form_tel"] = data.get("Tel Referente", "")
             st.session_state["last_loaded_code"] = val_codice_originale
+            # Forziamo il ricaricamento del piano incassi per prendere i dati del JSON
             if "stato_incassi" in st.session_state: del st.session_state["stato_incassi"]
     else:
         val_codice_originale = ""
@@ -388,6 +389,7 @@ def render_commessa_form(data=None):
              st.session_state["form_sede"] = ""
              st.session_state["form_ref"] = ""
              st.session_state["form_tel"] = ""
+             if "stato_incassi" in st.session_state: del st.session_state["stato_incassi"]
     
     titolo = "MODIFICA SCHEDA" if is_edit else "NUOVA COMMESSA"
     st.markdown(f"<h1 style='text-align: center;'>{titolo}</h1>", unsafe_allow_html=True)
@@ -395,20 +397,16 @@ def render_commessa_form(data=None):
 
     with st.expander("01 // ANAGRAFICA COMMESSA", expanded=True):
         c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1.5], gap="medium")
-        
         with c2: anno = st.number_input("Anno", 2020, 2030, val_anno, key="f_anno")
-        
         with c3:
             settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
             val_sett_raw = data.get("Settore", "RILIEVO").upper() if is_edit else "RILIEVO"
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
-        # --- FIX CODICE: AUTO-INCREMENTO E FORMATO ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
             codice_display = val_codice_originale
-            
             if is_edit and val_codice_originale:
                 parts = re.split(r'[-/]', val_codice_originale)
                 if len(parts) >= 3:
@@ -417,14 +415,11 @@ def render_commessa_form(data=None):
                 elif len(parts) >= 2:
                     nuovo_prefisso = mappa_settori.get(settore, "GEN")
                     codice_display = f"{nuovo_prefisso}/{parts[-1]}"
-
             elif not is_edit:
                 prefisso = mappa_settori.get(settore, "RIL")
                 base_code_search = f"{prefisso}/{anno}-" 
-                
                 df_check = carica_dati("Foglio1")
                 max_num = 0
-                
                 if not df_check.empty and "Codice" in df_check.columns:
                     codici_esistenti = df_check["Codice"].dropna().astype(str)
                     for c in codici_esistenti:
@@ -434,10 +429,8 @@ def render_commessa_form(data=None):
                                 num = int(suffix)
                                 if num > max_num: max_num = num
                             except: pass
-                
                 next_num = max_num + 1
                 codice_display = f"{base_code_search}{next_num:03d}"
-
             st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
             codice_finale = codice_display
 
@@ -446,12 +439,10 @@ def render_commessa_form(data=None):
             stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
         st.markdown("<br>", unsafe_allow_html=True)
         dettagli_servizi = st.text_input("Dettagli Commessa", value=val_dettagli)
         st.markdown("<br>", unsafe_allow_html=True)
-        
         SERVIZI_LIST = sorted([
             "Archeologia dell'Architettura", "Assistenza Archeologica", "Campionamento Malte", "Drone",
             "Indagine Diagnostica", "Inquadramento Archeologico Preliminare", "Modellazione 3D",
@@ -515,23 +506,31 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
         portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # --- HELPER PER AGGIORNAMENTO COLONNE (DATA/NOTE -> DATA SALDO/FATTURA) ---
-    def aggiorna_colonne_df(df):
-        # 1. Rinomina colonne vecchie
+    # --- FUNZIONE FONDAMENTALE PER NORMALIZZARE LE COLONNE ---
+    def normalizza_df_date_fattura(df):
+        # 1. Mappa nomi vecchi -> nuovi
         rename_map = {"Data": "Data Saldo", "Note": "Fattura"}
         df = df.rename(columns=rename_map)
-        # 2. Aggiungi Data Fattura se manca
-        if "Data Fattura" not in df.columns:
-            df["Data Fattura"] = None
-        # 3. Conversione date
+        
+        # 2. Crea le colonne nuove se mancano
+        if "Data Saldo" not in df.columns: df["Data Saldo"] = None
+        if "Data Fattura" not in df.columns: df["Data Fattura"] = None
+        if "Fattura" not in df.columns: df["Fattura"] = ""
+        
+        # 3. Converte date
         for col in ["Data Saldo", "Data Fattura"]:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+            
         return df
 
-    # --- DATAFRAMES ---
+    # --- INIZIALIZZAZIONE DATAFRAMES ---
+    
+    # 1. PIANO INCASSI (04)
+    # Struttura di default corretta
+    cols_incassi_std = ["Voce", "Importo netto €", "IVA %", "Importo lordo €", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
+    
     if "stato_incassi" not in st.session_state:
-        # Default inizializzato con le nuove colonne (Data Saldo, Data Fattura, Fattura)
+        # Default vuoto
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
         
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -540,108 +539,105 @@ def render_commessa_form(data=None):
                 if "incassi" in jdata:
                     df_temp = pd.DataFrame(jdata["incassi"])
                     if not df_temp.empty:
-                        if "Importo" in df_temp.columns and "Importo netto €" not in df_temp.columns: 
-                            df_temp = df_temp.rename(columns={"Importo": "Importo netto €"})
+                        # Fix nomi legacy
+                        if "Importo" in df_temp.columns: df_temp = df_temp.rename(columns={"Importo": "Importo netto €"})
                         if "IVA %" not in df_temp.columns: df_temp["IVA %"] = 22
                         df_temp["Importo lordo €"] = df_temp["Importo netto €"] * (1 + df_temp["IVA %"]/100)
                         
-                        # --- MODIFICA FONDAMENTALE: Applica rename Data->Data Saldo, Note->Fattura
-                        df_temp = aggiorna_colonne_df(df_temp)
-                        df_init = df_temp
+                        # --- NORMALIZZAZIONE COLONNE DATE/FATTURA ---
+                        df_temp = normalizza_df_date_fattura(df_temp)
+                        
+                        # Assicuriamoci che ci siano tutte le colonne nell'ordine giusto
+                        for c in cols_incassi_std:
+                            if c not in df_temp.columns: df_temp[c] = None
+                        df_init = df_temp[cols_incassi_std]
             except: pass
         st.session_state["stato_incassi"] = df_init
+
+    # 2. COSTI (05) - Strutture di default corrette
+    cols_costi_std = ["Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"] # Colonne base comuni
     
-    # Default per le altre tabelle (Costi)
+    # Default Soci
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
+    # Default Collaboratori
     df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
+    # Default Spese
     df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
 
     if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
         try:
             jdata = json.loads(data["Dati_JSON"])
             
-            if "soci" in jdata: 
-                df_temp = pd.DataFrame(jdata["soci"])
-                if "Ruolo" in df_temp.columns: df_temp = df_temp.rename(columns={"Ruolo": "Mansione"})
-                if "Socio" in df_temp.columns: df_temp["Socio"] = df_temp["Socio"].apply(inverti_nome)
-                df_temp = aggiorna_colonne_df(df_temp)
-                
-                expected = ["Socio", "Mansione", "Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
-                for c in expected:
-                     if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                df_soci_def = df_temp[expected]
+            # Helper interno per caricare e normalizzare le tabelle costi
+            def load_cost_table(key_name, df_default, extra_cols=[]):
+                if key_name in jdata:
+                    df_t = pd.DataFrame(jdata[key_name])
+                    if not df_t.empty:
+                        # Fix nomi specifici
+                        if key_name == "soci":
+                            if "Ruolo" in df_t.columns: df_t = df_t.rename(columns={"Ruolo": "Mansione"})
+                            if "Socio" in df_t.columns: df_t["Socio"] = df_t["Socio"].apply(inverti_nome)
+                        if key_name == "collab" and "Nome" in df_t.columns:
+                            df_t = df_t.rename(columns={"Nome": "Collaboratore"})
+                        
+                        # Normalizza date e fattura
+                        df_t = normalizza_df_date_fattura(df_t)
+                        
+                        # Completa colonne
+                        target_cols = extra_cols + cols_costi_std
+                        for c in target_cols:
+                            if c not in df_t.columns: 
+                                df_t[c] = 0.0 if c == "Importo" else (None if "Data" in c else "")
+                        return df_t[target_cols]
+                return df_default
 
-            if "collab" in jdata: 
-                df_temp = pd.DataFrame(jdata["collab"])
-                if "Nome" in df_temp.columns: df_temp = df_temp.rename(columns={"Nome": "Collaboratore"})
-                df_temp = aggiorna_colonne_df(df_temp)
+            df_soci_def = load_cost_table("soci", df_soci_def, ["Socio", "Mansione"])
+            df_collab_def = load_cost_table("collab", df_collab_def, ["Collaboratore", "Mansione"])
+            df_spese_def = load_cost_table("spese", df_spese_def, ["Voce"])
 
-                expected = ["Collaboratore", "Mansione", "Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
-                for c in expected:
-                     if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                df_collab_def = df_temp[expected]
-
-            if "spese" in jdata: 
-                df_temp = pd.DataFrame(jdata["spese"])
-                df_temp = aggiorna_colonne_df(df_temp)
-
-                expected = ["Voce", "Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
-                for c in expected:
-                     if c not in df_temp.columns: df_temp[c] = "" if c != "Importo" else 0.0
-                df_spese_def = df_temp[expected]
         except: pass
 
-    # 04. PIANO ECONOMICO
+    # 04. PIANO ECONOMICO (RENDER)
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
-        
-        # --- 1. FUNZIONI DI FORMATTAZIONE E PULIZIA ---
         fmt_euro = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
         def converti_valuta_italiana(val):
             if pd.isna(val) or str(val).strip() == "": return 0.0
             if isinstance(val, (float, int)): return float(val)
             s = str(val).replace("€", "").strip()
-            if "," in s:
-                s = s.replace(".", "").replace(",", ".")
-            else:
-                if s.count(".") >= 1: s = s.replace(".", "") 
+            if "," in s: s = s.replace(".", "").replace(",", ".")
+            else: 
+                if s.count(".") >= 1: s = s.replace(".", "")
             try: return float(s)
             except: return 0.0
 
-        # --- 2. PREPARAZIONE DATI ---
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
-        # CONFIGURAZIONE COLONNE PIANO ECONOMICO (MODIFICATO)
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
             "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
             "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
-            # Colonne aggiornate
+            # NUOVE COLONNE
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
             "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
             "Fattura": st.column_config.TextColumn("N. Fattura")
         }
-        order_cols = ["Voce", "Importo netto €", "Importo lordo €", "IVA %", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
         
-        # --- 3. EDITOR ---
         edited_incassi = st.data_editor(
             st.session_state["stato_incassi"], 
             num_rows="dynamic", 
             column_config=col_cfg, 
-            column_order=order_cols, 
+            column_order=cols_incassi_std, # Ordine forzato
             use_container_width=True, 
             key="ed_inc"
         )
         
-        # --- 4. CALCOLI E SALVATAGGIO ---
         ricalcolo = edited_incassi.copy()
         ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(converti_valuta_italiana)
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
         
-        # Verifica differenze per rerun
         diff_check = False
         try:
             netto_old = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana).round(2)
@@ -649,8 +645,8 @@ def render_commessa_form(data=None):
             if not netto_old.equals(netto_new) or len(ricalcolo) != len(st.session_state["stato_incassi"]):
                 diff_check = True
             else:
-                 cols_no_calc = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
-                 if not ricalcolo[cols_no_calc].equals(st.session_state["stato_incassi"][cols_no_calc]):
+                 cols_check = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
+                 if not ricalcolo[cols_check].equals(st.session_state["stato_incassi"][cols_check]):
                      diff_check = True
         except: diff_check = True
 
@@ -658,12 +654,10 @@ def render_commessa_form(data=None):
             st.session_state["stato_incassi"] = ricalcolo
             st.rerun()
 
-        # --- CALCOLI TOTALI ---
         tot_commessa_full = ricalcolo["Importo netto €"].sum()
         mask_fatturato = ricalcolo["Stato"] == "Fatturato"
         fatturato_netto = ricalcolo.loc[mask_fatturato, "Importo netto €"].sum()
         fatturato_lordo = ricalcolo.loc[mask_fatturato, "Importo lordo €"].sum()
-        
         tot_net = fatturato_netto
         tot_lordo = fatturato_lordo
         
@@ -676,8 +670,8 @@ def render_commessa_form(data=None):
         top_metrics = st.container()
         def get_money_col(): return st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01)
 
-        # CONFIGURAZIONE COMUNE PER COLONNE COSTI
-        common_cols = {
+        # Configurazione comune colonne Date/Fattura
+        common_cols_cfg = {
             "Importo": get_money_col(),
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
             "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
@@ -688,7 +682,7 @@ def render_commessa_form(data=None):
         soci_cfg = {
             "Socio": st.column_config.SelectboxColumn(options=SOCI_OPZIONI_FMT, required=True),
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Conteggiato", "Fatturato"], required=True),
-            **common_cols
+            **common_cols_cfg
         }
         if "Importo" in df_soci_def.columns: df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
@@ -696,7 +690,7 @@ def render_commessa_form(data=None):
         st.markdown("### COLLABORATORI")
         collab_cfg = {
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Fatturato"], required=True),
-            **common_cols
+            **common_cols_cfg
         }
         if "Importo" in df_collab_def.columns: df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
         edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
@@ -704,7 +698,7 @@ def render_commessa_form(data=None):
         st.markdown("### SPESE VARIE")
         spese_cfg = {
             "Stato": st.column_config.SelectboxColumn(options=["Da pagare", "Pagato"], required=True),
-            **common_cols
+            **common_cols_cfg
         }
         if "Importo" in df_spese_def.columns: df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
@@ -715,25 +709,21 @@ def render_commessa_form(data=None):
         
         with top_metrics:
             b1, b2, b3, b4 = st.columns(4)
-            
             with b1:
                 box_portatore = st.empty()
                 new_perc_port = st.number_input("Perc %", 0, 100, int(st.session_state["perc_portatore"]), key="np")
                 st.session_state["perc_portatore"] = new_perc_port
                 val_portatore = tot_net * (new_perc_port / 100.0)
                 box_portatore.markdown(f"<div class='total-box-desat'><div class='total-label'>PORTATORE</div><div class='total-value'>{fmt_euro(val_portatore)}</div></div>", unsafe_allow_html=True)
-            
             with b2:
                 box_societa = st.empty()
                 new_perc_soc = st.number_input("Perc %", 0, 100, int(st.session_state["perc_societa"]), key="ns")
                 st.session_state["perc_societa"] = new_perc_soc
                 val_societa = tot_net * (new_perc_soc / 100.0)
                 box_societa.markdown(f"<div class='total-box-desat'><div class='total-label'>SOCIETA'</div><div class='total-value'>{fmt_euro(val_societa)}</div></div>", unsafe_allow_html=True)
-            
             with b3: 
                 val_iva = tot_lordo - tot_net
                 st.markdown(f"<div class='total-box-desat'><div class='total-label'>IVA</div><div class='total-value'>{fmt_euro(val_iva)}</div></div>", unsafe_allow_html=True)
-            
             with b4: 
                 val_utili = tot_net - (sum_soci + sum_collab + sum_spese)
                 color = "#ff4b4b" if val_utili < 0 else "#ffffff"
@@ -754,7 +744,7 @@ def render_commessa_form(data=None):
             soci_to_save = edited_soci.copy()
             soci_to_save["Socio"] = soci_to_save["Socio"].apply(inverti_nome)
             
-            # Salvataggio JSON con i nuovi campi
+            # JSON: salvataggio con i nuovi campi
             json_data = json.dumps({
                 "incassi": st.session_state["stato_incassi"].to_dict('records'), 
                 "soci": soci_to_save.to_dict('records'),
@@ -1807,6 +1797,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
