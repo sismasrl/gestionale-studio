@@ -257,64 +257,116 @@ def fmt_euro(valore):
     except: valore = 0.0
     return f"€ {valore:,.2f}"
 
-def importa_excel_batch(uploaded_file):
+# --- FUNZIONE IMPORTAZIONE SMART (MULTI-FOGLIO) ---
+def importa_excel_batch(file_excel):
     try:
-        df_new = pd.read_excel(uploaded_file)
-        df_existing = carica_dati("Foglio1")
-        existing_codes = []
-        if not df_existing.empty and "Codice" in df_existing.columns:
-            existing_codes = df_existing["Codice"].astype(str).tolist()
+        # Legge tutti i fogli del file Excel
+        xls = pd.read_excel(file_excel, sheet_name=None)
         
-        expected_cols = ["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", 
-                         "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", 
-                         "Totale Commessa", "Fatturato"]
-        records_to_add = []
-        count_skipped = 0
-        
-        for _, row in df_new.iterrows():
-            if "Codice" not in row or pd.isna(row["Codice"]): continue
-            codice = str(row["Codice"]).strip()
-            if codice in existing_codes:
-                count_skipped += 1
-                continue
-            rec = {}
-            for col in expected_cols:
-                val = row.get(col, "")
-                if pd.isna(val): val = ""
-                rec[col] = val
-            rec["Portatore_Val"] = 0.0
-            rec["Costi Società"] = 0.0
-            rec["Utile Netto"] = 0.0
-            rec["Data Inserimento"] = str(date.today())
-            rec["Dati_JSON"] = json.dumps({
-                "incassi": [], "soci": [], "collab": [], "spese": [], 
-                "servizi": [], "percentages": {"portatore": 10, "societa": 10}
-            })
-            if "Dati_JSON" in row and pd.notna(row["Dati_JSON"]):
-                 rec["Dati_JSON"] = row["Dati_JSON"]
-            records_to_add.append(rec)
+        # Verifica se è il nuovo formato Smart
+        if "Commesse" in xls and "Piano_Economico" in xls and "Costi_Operativi" in xls:
+            df_main = xls["Commesse"]
+            df_piano = xls["Piano_Economico"]
+            df_costi = xls["Costi_Operativi"]
             
-        if records_to_add:
-            wks = get_worksheet("Foglio1")
-            current_data = wks.get_all_values()
-            headers = current_data[0] 
-            rows_to_append = []
-            for r in records_to_add:
-                ordered_row = []
-                for h in headers: ordered_row.append(r.get(h, ""))
-                rows_to_append.append(ordered_row)
-            wks.append_rows(rows_to_append)
+            # Normalizza colonne Codice per evitare errori di tipo
+            df_main["Codice"] = df_main["Codice"].astype(str)
+            df_piano["Codice"] = df_piano["Codice"].astype(str)
+            df_costi["Codice"] = df_costi["Codice"].astype(str)
             
-            # --- MODIFICA 5: Pulisci cache dopo importazione ---
-            carica_dati.clear()
+            count = 0
+            prog_bar = st.progress(0)
             
-            st.success(f"✅ Importati {len(records_to_add)} record. ({count_skipped} duplicati ignorati)")
+            for idx, row in df_main.iterrows():
+                codice = row["Codice"]
+                
+                # 1. Ricostruisci Piano Economico (Incassi)
+                incassi_rows = df_piano[df_piano["Codice"] == codice].to_dict('records')
+                # Pulizia: rimuovi la colonna Codice dai dati JSON (è ridondante) e gestisci le date
+                clean_incassi = []
+                for item in incassi_rows:
+                    item.pop("Codice", None)
+                    # Converti date in stringa per JSON
+                    for d_col in ["Data Saldo", "Data Fattura"]:
+                        if d_col in item and pd.notnull(item[d_col]):
+                            item[d_col] = str(item[d_col]).split(" ")[0]
+                    clean_incassi.append(item)
+
+                # 2. Ricostruisci Costi (Soci, Collab, Spese)
+                costi_subset = df_costi[df_costi["Codice"] == codice]
+                
+                soci_rows = []
+                collab_rows = []
+                spese_rows = []
+                
+                for _, c_row in costi_subset.iterrows():
+                    c_dict = c_row.to_dict()
+                    c_dict.pop("Codice", None)
+                    tipo = c_dict.pop("Tipo_Riga", "Spese") # Socio, Collab, Spese
+                    
+                    # Converti date
+                    for d_col in ["Data Saldo", "Data Fattura"]:
+                        if d_col in c_dict and pd.notnull(c_dict[d_col]):
+                            c_dict[d_col] = str(c_dict[d_col]).split(" ")[0]
+
+                    if tipo == "Socio": soci_rows.append(c_dict)
+                    elif tipo == "Collab": collab_rows.append(c_dict)
+                    else: spese_rows.append(c_dict)
+
+                # 3. Recupera Metadati JSON (Percentuali, Servizi) dalle colonne Excel se presenti
+                perc_port = row.get("Perc_Portatore", 10)
+                perc_soc = row.get("Perc_Societa", 10)
+                servizi_str = row.get("Lista_Servizi", "")
+                dettagli_srv = row.get("Dettagli_Servizi", "")
+                
+                lista_servizi = [s.strip() for s in str(servizi_str).split(",")] if servizi_str and pd.notnull(servizi_str) else []
+
+                # 4. Assembla il JSON finale
+                json_completo = {
+                    "incassi": clean_incassi,
+                    "soci": soci_rows,
+                    "collab": collab_rows,
+                    "spese": spese_rows,
+                    "servizi": lista_servizi,
+                    "dettagli_servizi": str(dettagli_srv),
+                    "percentages": {"portatore": int(perc_port) if pd.notnull(perc_port) else 10, "societa": int(perc_soc) if pd.notnull(perc_soc) else 10}
+                }
+                
+                # 5. Prepara il record per GSheets
+                record_dict = row.to_dict()
+                # Rimuovi colonne helper create per l'export
+                cols_to_remove = ["Perc_Portatore", "Perc_Societa", "Lista_Servizi", "Dettagli_Servizi"]
+                for c in cols_to_remove:
+                    record_dict.pop(c, None)
+                
+                record_dict["Dati_JSON"] = json.dumps(json_completo, default=str)
+                
+                # Salva (usa la funzione salva_record esistente)
+                salva_record(record_dict, "Foglio1", "Codice", mode="update")
+                
+                count += 1
+                prog_bar.progress(min(count / len(df_main), 1.0))
+                
+            st.success(f"✅ Importazione completata! Aggiornate {count} commesse.")
             time.sleep(2)
             st.rerun()
+            
         else:
-            if count_skipped > 0: st.warning(f"⚠️ Nessun nuovo dato. {count_skipped} commesse esistevano già.")
-            else: st.error("❌ Nessun dato valido trovato.")
-    except Exception as e: st.error(f"Errore Import: {e}")
+            # Fallback: Vecchia importazione (File singolo)
+            st.warning("⚠️ File non in formato 'Smart Export'. Tento importazione standard...")
+            df_new = pd.read_excel(file_excel)
+            count = 0
+            for index, row in df_new.iterrows():
+                record = row.to_dict()
+                # Se c'è un JSON grezzo, usalo, altrimenti lascia vuoto
+                if "Dati_JSON" not in record or pd.isna(record["Dati_JSON"]):
+                    record["Dati_JSON"] = "{}"
+                salva_record(record, "Foglio1", "Codice", mode="update")
+                count += 1
+            st.success(f"Importazione standard completata ({count} record).")
+            
+    except Exception as e:
+        st.error(f"Errore durante l'importazione: {e}")
 
 # --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
 def render_commessa_form(data=None):
@@ -1254,11 +1306,92 @@ def render_dashboard():
         with c_actions:
             tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
             with tab_backup:
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
-                    df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
-                st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+                st.markdown("Genera un file Excel avanzato con fogli separati per Commesse, Piano Economico e Costi, facile da modificare.")
+                
+                if st.button("📥 SCARICA EXCEL SMART (EDITABILE)", use_container_width=True):
+                    # --- 1. PREPARAZIONE LISTE PER I FOGLI ---
+                    rows_commesse = []
+                    rows_piano = []
+                    rows_costi = []
+                    
+                    for idx, row in df.iterrows():
+                        # A. Gestione Foglio Commesse (Flattening)
+                        commessa_dict = row.to_dict()
+                        
+                        # Parsing JSON per estrarre dettagli
+                        try:
+                            dati = json.loads(str(row.get("Dati_JSON", "{}")))
+                        except: dati = {}
+                        
+                        # Aggiungi colonne helper per modifica facile
+                        commessa_dict["Perc_Portatore"] = dati.get("percentages", {}).get("portatore", 10)
+                        commessa_dict["Perc_Societa"] = dati.get("percentages", {}).get("societa", 10)
+                        commessa_dict["Lista_Servizi"] = ", ".join(dati.get("servizi", []))
+                        commessa_dict["Dettagli_Servizi"] = dati.get("dettagli_servizi", "")
+                        
+                        # Rimuovi colonne calcolate inutili per l'export statico
+                        cols_drop = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Settore_Norm", "Dati_JSON"]
+                        for c in cols_drop: commessa_dict.pop(c, None)
+                        
+                        rows_commesse.append(commessa_dict)
+                        
+                        # B. Gestione Foglio Piano Economico
+                        codice = str(row["Codice"])
+                        incassi = dati.get("incassi", [])
+                        for item in incassi:
+                            if isinstance(item, dict):
+                                item["Codice"] = codice # Link chiave esterna
+                                rows_piano.append(item)
+                                
+                        # C. Gestione Foglio Costi (Unificato con colonna Tipo)
+                        # Soci
+                        for item in dati.get("soci", []):
+                            if isinstance(item, dict):
+                                item["Codice"] = codice
+                                item["Tipo_Riga"] = "Socio"
+                                rows_costi.append(item)
+                        # Collaboratori
+                        for item in dati.get("collab", []):
+                            if isinstance(item, dict):
+                                item["Codice"] = codice
+                                item["Tipo_Riga"] = "Collab"
+                                rows_costi.append(item)
+                        # Spese
+                        for item in dati.get("spese", []):
+                            if isinstance(item, dict):
+                                item["Codice"] = codice
+                                item["Tipo_Riga"] = "Spese"
+                                rows_costi.append(item)
+
+                    # --- 2. CREAZIONE DATAFRAMES ---
+                    df_exp_main = pd.DataFrame(rows_commesse)
+                    df_exp_piano = pd.DataFrame(rows_piano)
+                    df_exp_costi = pd.DataFrame(rows_costi)
+                    
+                    # Ordina colonne per leggibilità (Opzionale)
+                    if not df_exp_piano.empty:
+                        cols_p = ["Codice", "Voce", "Stato", "Importo netto €", "IVA %", "Data Saldo", "Data Fattura", "Fattura"]
+                        final_cols_p = [c for c in cols_p if c in df_exp_piano.columns] + [c for c in df_exp_piano.columns if c not in cols_p]
+                        df_exp_piano = df_exp_piano[final_cols_p]
+
+                    if not df_exp_costi.empty:
+                        cols_c = ["Codice", "Tipo_Riga", "Socio", "Collaboratore", "Voce", "Mansione", "Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"]
+                        final_cols_c = [c for c in cols_c if c in df_exp_costi.columns] + [c for c in df_exp_costi.columns if c not in cols_c]
+                        df_exp_costi = df_exp_costi[final_cols_c]
+
+                    # --- 3. SCRITTURA SU EXCEL ---
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        df_exp_main.to_excel(writer, index=False, sheet_name='Commesse')
+                        df_exp_piano.to_excel(writer, index=False, sheet_name='Piano_Economico')
+                        df_exp_costi.to_excel(writer, index=False, sheet_name='Costi_Operativi')
+                        
+                    st.download_button(
+                        label="📥 CLICCA QUI PER SCARICARE IL FILE",
+                        data=buffer,
+                        file_name=f"Smart_Backup_SISMA_{date.today()}.xlsx",
+                        mime="application/vnd.ms-excel"
+                    )
             with tab_import:
                 st.info("Formato richiesto: Codice, Anno, Nome Commessa...", icon="ℹ️")
                 template_df = pd.DataFrame(columns=["Codice", "Anno", "Nome Commessa", "Cliente", "P_IVA", "Sede", "Referente", "Tel Referente", "PM", "Portatore", "Settore", "Stato", "Totale Commessa"])
@@ -1789,6 +1922,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
