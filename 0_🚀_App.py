@@ -1522,13 +1522,14 @@ def render_organigramma():
 with st.sidebar:
     st.markdown("### HOME")
     st.markdown("---")
-    scelta = st.radio("PAGINE:", [":: DASHBOARD & ARCHIVIO", ":: NUOVA COMMESSA", ":: CLIENTI", ":: SOCIETA'"], index=0)
+    scelta = st.radio("PAGINE:", ["> DASHBOARD & ARCHIVIO", "> NUOVA COMMESSA", "> CLIENTI", "> SOCIETA'"], index=0)
     st.markdown("---")
 
 if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
