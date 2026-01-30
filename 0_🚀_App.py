@@ -319,9 +319,6 @@ def importa_excel_batch(uploaded_file):
 # --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
 def render_commessa_form(data=None):
     is_edit = data is not None
-    # --- 3. FORM COMMESSA (LOGICA SAVE-FIRST) ---
-def render_commessa_form(data=None):
-    is_edit = data is not None
     
     # --- HELPER PER NOMI ---
     def inverti_nome(nome_completo):
@@ -508,15 +505,19 @@ def render_commessa_form(data=None):
         idx_soc = SOCI_OPZIONI_FMT.index(curr_soc_fmt) if curr_soc_fmt in SOCI_OPZIONI_FMT else 0
         portatore = inverti_nome(c2.selectbox("Socio Portatore ▼", SOCI_OPZIONI_FMT, index=idx_soc))
 
-    # --- FUNZIONE NORMALIZZAZIONE COLONNE ---
+    # --- FUNZIONE NORMALIZZAZIONE COLONNE (AGGIORNATA PER EVITARE CRASH) ---
     def normalizza_colonne_df(df):
         if "Data" in df.columns: df = df.rename(columns={"Data": "Data Saldo"})
         if "Note" in df.columns: df = df.rename(columns={"Note": "Fattura"})
+        
+        # Assicura che le colonne esistano
         if "Data Fattura" not in df.columns: df["Data Fattura"] = None
         if "Data Saldo" not in df.columns: df["Data Saldo"] = None
         if "Fattura" not in df.columns: df["Fattura"] = ""
+        
+        # FIX: Conversione sicura a datetime64[ns] senza .dt.date per evitare tipi misti
         for col in ["Data Saldo", "Data Fattura"]:
-            df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+            df[col] = pd.to_datetime(df[col], errors='coerce')
         return df
 
     # --- INIZIALIZZAZIONE DATAFRAMES ---
@@ -543,7 +544,8 @@ def render_commessa_form(data=None):
                             if c not in df_temp.columns: df_temp[c] = None
                         df_init = df_temp[cols_incassi_std]
             except: pass
-        st.session_state["stato_incassi"] = df_init
+        # Normalizziamo anche l'inizializzazione per garantire i tipi corretti
+        st.session_state["stato_incassi"] = normalizza_colonne_df(df_init)
 
     cols_costi_std = ["Importo", "Stato", "Data Saldo", "Data Fattura", "Fattura"] 
     
@@ -574,6 +576,11 @@ def render_commessa_form(data=None):
             df_collab_def = load_cost_table("collab", df_collab_def, ["Collaboratore", "Mansione"])
             df_spese_def = load_cost_table("spese", df_spese_def, ["Voce"])
         except: pass
+    
+    # Assicuriamo che anche le tabelle di default siano normalizzate come datetime
+    df_soci_def = normalizza_colonne_df(df_soci_def)
+    df_collab_def = normalizza_colonne_df(df_collab_def)
+    df_spese_def = normalizza_colonne_df(df_spese_def)
 
     # 04. PIANO ECONOMICO (RENDER)
     with st.expander("04 // PIANO ECONOMICO", expanded=True):
@@ -613,6 +620,9 @@ def render_commessa_form(data=None):
         )
         
         ricalcolo = edited_incassi.copy()
+        # Normalizziamo anche il ritorno dell'editor per sicurezza
+        ricalcolo = normalizza_colonne_df(ricalcolo)
+        
         ricalcolo["Importo netto €"] = ricalcolo["Importo netto €"].apply(converti_valuta_italiana)
         ricalcolo["Importo lordo €"] = ricalcolo["Importo netto €"] * (1 + (ricalcolo["IVA %"] / 100))
         
@@ -624,6 +634,7 @@ def render_commessa_form(data=None):
                 diff_check = True
             else:
                  cols_check = [c for c in ricalcolo.columns if c not in ["Importo netto €", "Importo lordo €"]]
+                 # Confronto sicuro evitando i problemi di NaN != NaN
                  if not ricalcolo[cols_check].equals(st.session_state["stato_incassi"][cols_check]):
                      diff_check = True
         except: diff_check = True
@@ -1778,6 +1789,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
