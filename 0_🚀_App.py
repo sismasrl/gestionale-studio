@@ -531,7 +531,7 @@ def render_commessa_form(data=None):
 
     # --- DATAFRAMES ---
     if "stato_incassi" not in st.session_state:
-        # Default inizializzato con le nuove colonne
+        # Default inizializzato con le nuove colonne (Data Saldo, Data Fattura, Fattura)
         df_init = pd.DataFrame([{"Voce": "Acconto", "Importo netto €": 0.0, "IVA %": 22, "Importo lordo €": 0.0, "Stato": "Previsto", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
         
         if is_edit and "Dati_JSON" in data and data["Dati_JSON"]:
@@ -545,13 +545,13 @@ def render_commessa_form(data=None):
                         if "IVA %" not in df_temp.columns: df_temp["IVA %"] = 22
                         df_temp["Importo lordo €"] = df_temp["Importo netto €"] * (1 + df_temp["IVA %"]/100)
                         
-                        # APPLICA LA TRASFORMAZIONE COLONNE QUI
+                        # --- MODIFICA FONDAMENTALE: Applica rename Data->Data Saldo, Note->Fattura
                         df_temp = aggiorna_colonne_df(df_temp)
                         df_init = df_temp
             except: pass
         st.session_state["stato_incassi"] = df_init
     
-    # Default per le altre tabelle
+    # Default per le altre tabelle (Costi)
     df_soci_def = pd.DataFrame([{"Socio": SOCI_OPZIONI_FMT[0], "Mansione": "Coordinamento", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
     df_collab_def = pd.DataFrame([{"Collaboratore": "Esterno", "Mansione": "Rilievo", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
     df_spese_def = pd.DataFrame([{"Voce": "Varie", "Importo": 0.0, "Stato": "Da pagare", "Data Saldo": None, "Data Fattura": None, "Fattura": ""}])
@@ -612,13 +612,14 @@ def render_commessa_form(data=None):
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
 
+        # CONFIGURAZIONE COLONNE PIANO ECONOMICO (MODIFICATO)
         col_cfg = {
             "Voce": st.column_config.SelectboxColumn("Voce", options=["Acconto", "Saldo"], required=True),
             "Importo netto €": st.column_config.NumberColumn(format="€ %.2f", required=True, step=0.01),
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True),
             "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True),
-            # MODIFICA: Colonne Date e Fattura
+            # Colonne aggiornate
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY"),
             "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY"),
             "Fattura": st.column_config.TextColumn("N. Fattura")
@@ -1806,6 +1807,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
