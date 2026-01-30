@@ -1099,7 +1099,24 @@ def render_dashboard():
     if df.empty: 
         st.info("Nessun dato in archivio.")
     else:
-        # --- 1. CALCOLO DATI KPI (Somma dai JSON) ---
+        # --- CALCOLO TOTALE PIANO ECONOMICO (NUOVO) ---
+        def calcola_totale_piano(row):
+            t_piano = 0.0
+            raw_json = row.get("Dati_JSON", "")
+            if pd.isna(raw_json) or str(raw_json).strip() == "": return 0.0
+            
+            try:
+                dati = json.loads(str(raw_json))
+                # Somma tutti gli 'Importo netto €' presenti in 'incassi' (Piano Economico)
+                incassi = dati.get("incassi", [])
+                for item in incassi:
+                    if isinstance(item, dict):
+                        t_piano += pulisci_per_calcoli(item.get("Importo netto €", 0))
+            except:
+                return 0.0
+            return t_piano
+
+        # --- CALCOLO DATI KPI FATTURATO ---
         def calcola_totali_kpi(row):
             t_netto = 0.0
             t_lordo = 0.0
@@ -1129,6 +1146,8 @@ def render_dashboard():
 
         # --- PREPARAZIONE DATI ---
         df["Anno"] = pd.to_numeric(df["Anno"], errors='coerce').fillna(0).astype(int)
+        # Calcolo colonne nascoste per ordinamento e visualizzazione
+        df["_Piano_Netto_Calc"] = df.apply(calcola_totale_piano, axis=1)
         df[["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc"]] = df.apply(calcola_totali_kpi, axis=1)
         
         # --- FILTRI ---
@@ -1152,6 +1171,7 @@ def render_dashboard():
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
+            # Nota: Le card mostrano il Fatturato (KPI finanziari)
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
@@ -1183,7 +1203,6 @@ def render_dashboard():
 
         st.markdown("---")
         st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
-        # (NOTA: Rimosso il selettore modifica dropdown)
 
         # --- GESTIONE ARCHIVIO ---
         if "select_all_state" not in st.session_state: st.session_state["select_all_state"] = False
@@ -1207,7 +1226,7 @@ def render_dashboard():
             with tab_backup:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
+                    cols_to_drop = [c for c in ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Settore_Norm", "Anno_Int", "Fatturato"] if c in df.columns]
                     df.drop(columns=cols_to_drop, errors='ignore').to_excel(writer, index=False, sheet_name='Archivio_SISMA')
                 st.download_button("SCARICA EXCEL COMPLETO", data=buffer, file_name=f"Backup_SISMA_{date.today()}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
             with tab_import:
@@ -1254,25 +1273,38 @@ def render_dashboard():
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
             
             # --- AGGIUNTA COLONNA DI SELEZIONE ---
-            # Nota: Usiamo "Seleziona" invece di "Elimina" per chiarezza
             if "Seleziona" not in df_to_edit.columns:
                  df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
             else:
                  df_to_edit["Seleziona"] = st.session_state["select_all_state"]
 
-            cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "Fatturato", "Settore_Norm"] 
+            cols_to_hide = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Fatturato", "Settore_Norm"] 
             df_to_edit = df_to_edit.drop(columns=[c for c in cols_to_hide if c in df_to_edit.columns], errors='ignore')
 
-            # --- FIX VISIVO IMPORTI ---
-            if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto"] = df_filtered["_Fatt_Netto_Calc"]
-            if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo"] = df_filtered["_Fatt_Lordo_Calc"]
+            # --- POPOLAMENTO COLONNE CALCOLATE PER VISUALIZZAZIONE ---
+            if "_Piano_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Commessa"] = df_filtered["_Piano_Netto_Calc"]
+            if "_Fatt_Netto_Calc" in df_filtered.columns: df_to_edit["Totale Netto Fatturato"] = df_filtered["_Fatt_Netto_Calc"]
+            if "_Fatt_Lordo_Calc" in df_filtered.columns: df_to_edit["Totale Lordo Fatturato"] = df_filtered["_Fatt_Lordo_Calc"]
 
-            for col_name in ["Totale Netto", "Totale Lordo"]:
+            # Formattazione Colonne Monetarie
+            for col_name in ["Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]:
                 if col_name in df_to_edit.columns:
                     df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-            # Selezione colonne finali
-            cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto", "Totale Lordo"]
+            # Selezione colonne finali con ORDINAMENTO richiesto
+            cols_to_show = [
+                "Seleziona", 
+                "🚦 STATO", 
+                "Codice", 
+                "Stato", 
+                "Anno", 
+                "Cliente", 
+                "Nome Commessa", 
+                "Settore", 
+                "Totale Netto Commessa", 
+                "Totale Netto Fatturato", 
+                "Totale Lordo Fatturato"
+            ]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
             st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
@@ -1281,10 +1313,24 @@ def render_dashboard():
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
                 column_config={
-                    "Seleziona": st.column_config.CheckboxColumn("Sel", default=False, width="small"),
-                    "🚦 STATO": st.column_config.Column("Info", width="small", help="Stato calcolato"),
-                    "Totale Netto": st.column_config.TextColumn("Totale Netto", width="medium"),
-                    "Totale Lordo": st.column_config.TextColumn("Totale Lordo", width="medium"),
+                    "Seleziona": st.column_config.CheckboxColumn("☑️", default=False, width="small"),
+                    "🚦 STATO": st.column_config.Column("ℹ️", width="small", help="Stato calcolato"),
+                    
+                    "Totale Netto Commessa": st.column_config.TextColumn(
+                        "Tot. Commessa (Netto)", 
+                        help="Totale Netto del Piano Economico (Previsto)", 
+                        width="medium"
+                    ),
+                    "Totale Netto Fatturato": st.column_config.TextColumn(
+                        "Fatturato (Netto)", 
+                        help="Totale Netto effettivamente Fatturato", 
+                        width="medium"
+                    ),
+                    "Totale Lordo Fatturato": st.column_config.TextColumn(
+                        "Fatturato (Lordo)", 
+                        help="Totale Lordo effettivamente Fatturato", 
+                        width="medium"
+                    ),
                 },
                 disabled=[c for c in actual_cols if c != "Seleziona"], 
                 use_container_width=True,
@@ -1502,6 +1548,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
