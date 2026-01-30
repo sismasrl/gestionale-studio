@@ -1292,13 +1292,16 @@ def render_dashboard():
         """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
-        # --- GRAFICO A TORTA (DONUT CHART) CON % E VALORI ---
+        # --- GRAFICO A CIAMBELLA (DONUT CHART) ---
         st.markdown("<br>", unsafe_allow_html=True)
         
         if tot_netto_gen > 0:
             df_chart = pd.DataFrame(chart_data_dict)
             
-            # Calcolo Percentuali e Formattazione Etichette
+            # 1. Calcoli e Mappatura Codici
+            map_codici = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
+            df_chart["Label_Codice"] = df_chart["Settore"].map(map_codici)
+            
             df_chart["Percentuale"] = df_chart["Fatturato Netto"] / tot_netto_gen
             df_chart["Label_Valore"] = df_chart["Fatturato Netto"].apply(lambda x: f"€ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
             df_chart["Label_Perc"] = df_chart["Percentuale"].apply(lambda x: f"{x:.1%}")
@@ -1314,16 +1317,22 @@ def render_dashboard():
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
-            # Testo 1: Valore Monetario (Più grande e più lontano)
-            text_val = base.mark_text(radius=170, size=16).encode(
+            # LIVELLO 1: Codice Settore (RIL, ARC, INT) - In alto, grassetto
+            text_code = base.mark_text(radius=175, dy=-22, size=14, fontWeight="bold").encode(
+                text=alt.Text("Label_Codice"),
+                order=alt.Order("Fatturato Netto", sort="descending"),
+                color=alt.value("white") 
+            )
+
+            # LIVELLO 2: Valore Monetario - Al centro
+            text_val = base.mark_text(radius=175, dy=0, size=16).encode(
                 text=alt.Text("Label_Valore"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
-            # Testo 2: Percentuale (Leggermente più piccolo, sotto il valore)
-            # dy aumentato a 22 per compensare la dimensione del font
-            text_perc = base.mark_text(radius=170, dy=22, size=13).encode(
+            # LIVELLO 3: Percentuale - In basso, grigio
+            text_perc = base.mark_text(radius=175, dy=22, size=13).encode(
                 text=alt.Text("Label_Perc"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("#d0d0d0") 
@@ -1334,9 +1343,8 @@ def render_dashboard():
                 text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            final_chart = (pie + text_val + text_perc + text_center).properties(
-                title="Distribuzione Fatturato Netto per Settore"
-            ).configure_view(strokeWidth=0).configure_title(color='white')
+            # Titolo rimosso come richiesto
+            final_chart = (pie + text_code + text_val + text_perc + text_center).configure_view(strokeWidth=0)
 
             st.altair_chart(final_chart, use_container_width=True)
         else:
@@ -1972,6 +1980,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
