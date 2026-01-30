@@ -1703,10 +1703,6 @@ with st.sidebar:
     ], index=0)
     st.markdown("---")
 
-if st.button("🔒 LOGOUT", key="btn_logout_sidebar"):
-    del st.session_state["password_correct"]
-    st.rerun()
-
 # --- 9. RENDER PAGINE ---
 if "> DASHBOARD" in scelta:
     render_dashboard()
@@ -1718,6 +1714,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_societa_page()
+
 
 
 
