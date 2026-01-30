@@ -1317,36 +1317,36 @@ def render_dashboard():
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
-            # LIVELLO 1: Codice Settore (RIL, ARC, INT) - In alto
+            # LIVELLO 1: Codice Settore
             text_code = base.mark_text(radius=155, dy=-22, size=14, fontWeight="bold").encode(
                 text=alt.Text("Label_Codice"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
-            # LIVELLO 2: Valore Monetario - Al centro
+            # LIVELLO 2: Valore Monetario
             text_val = base.mark_text(radius=155, dy=0, size=16).encode(
                 text=alt.Text("Label_Valore"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
-            # LIVELLO 3: Percentuale - In basso
+            # LIVELLO 3: Percentuale
             text_perc = base.mark_text(radius=155, dy=22, size=13).encode(
                 text=alt.Text("Label_Perc"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("#d0d0d0") 
             )
             
-            # Etichetta Centrale (Totale)
+            # Etichetta Centrale
             text_center = alt.Chart(pd.DataFrame({'text': [f'€ {fmt_netto_gen}']})).mark_text(
                 text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            # Configurazione finale senza configure_autosize (usa padding e columns)
+            # FIX ERRORE JS: Padding come dizionario esplicito
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
                 height=450,
-                padding=30
+                padding={"left": 20, "right": 20, "top": 20, "bottom": 20}
             ).configure_view(
                 strokeWidth=0
             )
@@ -1987,6 +1987,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
