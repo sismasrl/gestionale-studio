@@ -1157,6 +1157,7 @@ def render_dashboard():
         
         c_filt, c_void = st.columns([1, 3])
         sel_anno_str = c_filt.selectbox("Filtra Dashboard e Archivio per Anno:", anni_opts)
+        
         if sel_anno_str != "TOTALE":
             df_filtered = df[df["Anno"] == int(sel_anno_str)].copy()
         else:
@@ -1172,12 +1173,15 @@ def render_dashboard():
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
+            
             fmt_netto = forza_testo_visivo(tot_netto_settore).replace("€ ", "")
             fmt_lordo = forza_testo_visivo(tot_lordo_settore).replace("€ ", "")
             
             card_html = f"""
             <div style="background-color:{palette[i]}; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white;">
-                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">{nome}</div>
+                <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
+                    {nome}
+                </div>
                 <div style="display: flex; justify-content: space-around; align-items: center;">
                     <div style="text-align:center;">
                         <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
@@ -1189,11 +1193,14 @@ def render_dashboard():
                         <div style="font-size:20px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo}</div>
                     </div>
                 </div>
-                <div style="font-size:11px; color:#ccece6; margin-top:10px;">{len(d_s)} Commesse ({sel_anno_str})</div>
-            </div>"""
+                <div style="font-size:11px; color:#ccece6; margin-top:10px;">
+                    {len(d_s)} Commesse ({sel_anno_str})
+                </div>
+            </div>
+            """
             with col: st.markdown(card_html, unsafe_allow_html=True)
         
-        # --- KPI CARD (TOTALE GENERALE A TUTTA PAGINA) ---
+        # --- KPI CARD (TOTALE GENERALE) ---
         tot_netto_gen = df_filtered['_Fatt_Netto_Calc'].sum()
         tot_lordo_gen = df_filtered['_Fatt_Lordo_Calc'].sum()
         fmt_netto_gen = forza_testo_visivo(tot_netto_gen).replace("€ ", "")
@@ -1201,7 +1208,9 @@ def render_dashboard():
 
         card_total_html = f"""
         <div style="background-color:#092a33; padding:15px; border:1px solid #ddd; border-radius:6px; text-align:center; color:white; margin-top:20px;">
-            <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">TOTALE</div>
+            <div style="font-weight:bold; font-size:18px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px;">
+                TOTALE GENERALE
+            </div>
             <div style="display: flex; justify-content: space-around; align-items: center;">
                 <div style="text-align:center;">
                     <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">NETTO</div>
@@ -1212,14 +1221,12 @@ def render_dashboard():
                     <div style="font-size:11px; color:#ffebd6; text-transform:uppercase;">LORDO</div>
                     <div style="font-size:24px; color:#ffebd6; font-weight:bold;">€ {fmt_lordo_gen}</div>
                 </div>
-                <div style="width:1px; height:40px; background-color:rgba(255,255,255,0.3);"></div>
-                <div style="text-align:center;">
-                    <div style="font-size:11px; color:#ccece6; text-transform:uppercase;">COMMESSE</div>
-                    <div style="font-size:24px; font-weight:bold;">{len(df_filtered)}</div>
-                </div>
             </div>
-            <div style="font-size:11px; color:#ccece6; margin-top:5px;">Dati Aggregati ({sel_anno_str})</div>
-        </div>"""
+            <div style="font-size:11px; color:#ccece6; margin-top:10px;">
+                {len(df_filtered)} Commesse Totali ({sel_anno_str})
+            </div>
+        </div>
+        """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
         st.markdown("---")
@@ -1264,7 +1271,7 @@ def render_dashboard():
             df_to_edit = df_filtered.copy()
 
             def calcola_stato_colore(row):
-                # 🟣 PRIORITÀ 1: FUCSIA
+                # 🔴 PRIORITÀ 1: ROSSO
                 try:
                     raw_json = row.get("Dati_JSON", "{}")
                     if not pd.isna(raw_json) and str(raw_json).strip() != "":
@@ -1276,7 +1283,7 @@ def render_dashboard():
                                     s_pag = it.get("Stato", "")
                                     i_val = pulisci_per_calcoli(it.get("Importo", 0))
                                     if s_pag == "Da pagare" and abs(i_val) > 0.01:
-                                        return "🟣"
+                                        return "🔴"
                 except: pass
                 
                 # 🟡 PRIORITÀ 2: GIALLO
@@ -1305,7 +1312,7 @@ def render_dashboard():
             cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-            st.caption("LEGENDA: 🟣 Ci sono pagamenti 'Da pagare' | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
+            st.caption("LEGENDA: 🔴 Ci sono pagamenti da saldare | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldada")
 
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
@@ -1522,6 +1529,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
