@@ -1026,14 +1026,6 @@ def render_dashboard():
     # Carica i dati aggiornati
     df = carica_dati("Foglio1")
     
-    st.markdown("<h2 style='text-align: center;'>DASHBOARD ANALITICA</h2>", unsafe_allow_html=True)
-
-    # --- 1. FUNZIONE PER I CALCOLI (Restituisce un FLOAT) ---
-    def pulisci_per_calcoli(val):# --- 5. DASHBOARD & IMPORT ---
-def render_dashboard():
-    # Carica i dati aggiornati
-    df = carica_dati("Foglio1")
-    
     # --- CSS HACK: Allineamento centrato prime due colonne ---
     st.markdown("""
     <style>
@@ -1569,6 +1561,7 @@ if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
