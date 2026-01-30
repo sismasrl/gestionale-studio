@@ -1311,7 +1311,7 @@ def render_dashboard():
             )
 
             # Anello (Donut)
-            pie = base.mark_arc(outerRadius=110, innerRadius=75).encode(
+            pie = base.mark_arc(outerRadius=110, innerRadius=95).encode(
                 color=alt.Color("Settore", scale=alt.Scale(domain=settori, range=palette), legend=None),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
@@ -1346,7 +1346,7 @@ def render_dashboard():
             # FIX ERRORE JS: Padding come dizionario esplicito
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
                 height=350,
-                padding={"left": 20, "right": 20, "top": 20, "bottom": 20}
+                padding={"left": 20, "right": 20, "top": 20, "bottom": 10}
             ).configure_view(
                 strokeWidth=0
             )
@@ -1987,6 +1987,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
