@@ -1335,11 +1335,11 @@ def render_dashboard():
             col_mod, col_del, col_space = st.columns([0.3, 0.3, 0.4])
 
             with col_mod:
-                if st.button("✏️ MODIFICA RIGA SELEZIONATA", use_container_width=True):
+                if st.button("✏️ MODIFICA COMMESSA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
                         st.session_state["edit_codice_commessa"] = rows_selected.iloc[0]["Codice"]
                         st.rerun()
-                    elif len(rows_selected) == 0: st.warning("Seleziona almeno una riga.")
+                    elif len(rows_selected) == 0: st.warning("Seleziona almeno una commessa.")
                     else: st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
             with col_del:
@@ -1520,15 +1520,16 @@ def render_organigramma():
 
 # --- 7. ROUTING ---
 with st.sidebar:
-    st.markdown("### MENU STUDIO")
+    st.markdown("### HOME")
     st.markdown("---")
-    scelta = st.radio("VAI A:", [":: DASHBOARD & ARCHIVIO", ":: NUOVA COMMESSA", ":: CLIENTI", ":: SOCIETA'"], index=0)
+    scelta = st.radio("PAGINE:", [":: DASHBOARD & ARCHIVIO", ":: NUOVA COMMESSA", ":: CLIENTI", ":: SOCIETA'"], index=0)
     st.markdown("---")
 
 if "DASHBOARD" in scelta: render_dashboard()
 elif "NUOVA COMMESSA" in scelta: render_commessa_form(None)
 elif "CLIENTI" in scelta: render_clienti_page()
 elif "SOCIETA'" in scelta: render_organigramma()
+
 
 
 
