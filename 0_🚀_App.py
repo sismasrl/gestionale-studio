@@ -1343,8 +1343,10 @@ def render_dashboard():
                 text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            # Titolo rimosso come richiesto
-            final_chart = (pie + text_code + text_val + text_perc + text_center).configure_view(strokeWidth=0)
+            # Titolo rimosso e ALTEZZA AUMENTATA A 450
+            final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
+                height=450
+            ).configure_view(strokeWidth=0)
 
             st.altair_chart(final_chart, use_container_width=True)
         else:
@@ -1980,6 +1982,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
