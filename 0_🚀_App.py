@@ -1292,7 +1292,7 @@ def render_dashboard():
         """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
-        # --- GRAFICO A CIAMBELLA (DONUT CHART) CENTRATO E SCALABILE ---
+        # --- GRAFICO A CIAMBELLA (DONUT CHART) ---
         st.markdown("<br>", unsafe_allow_html=True)
         
         if tot_netto_gen > 0:
@@ -1310,14 +1310,14 @@ def render_dashboard():
                 theta=alt.Theta("Fatturato Netto", stack=True)
             )
 
-            # Anello (Donut) - Raggi ottimizzati per scalabilità
+            # Anello (Donut)
             pie = base.mark_arc(outerRadius=110, innerRadius=75).encode(
                 color=alt.Color("Settore", scale=alt.Scale(domain=settori, range=palette), legend=None),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
-            # LIVELLO 1: Codice Settore (RIL, ARC, INT) - In alto, grassetto
+            # LIVELLO 1: Codice Settore (RIL, ARC, INT) - In alto
             text_code = base.mark_text(radius=155, dy=-22, size=14, fontWeight="bold").encode(
                 text=alt.Text("Label_Codice"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
@@ -1331,7 +1331,7 @@ def render_dashboard():
                 color=alt.value("white") 
             )
 
-            # LIVELLO 3: Percentuale - In basso, grigio
+            # LIVELLO 3: Percentuale - In basso
             text_perc = base.mark_text(radius=155, dy=22, size=13).encode(
                 text=alt.Text("Label_Perc"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
@@ -1343,19 +1343,15 @@ def render_dashboard():
                 text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            # Configurazione finale per centramento e scaling
+            # Configurazione finale senza configure_autosize (usa padding e columns)
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
-                height=450, # Altezza fissa
-                padding=20  # Padding interno per evitare tagli
+                height=450,
+                padding=30
             ).configure_view(
                 strokeWidth=0
-            ).configure_autosize(
-                type='fit', 
-                contains='padding' # Questo adatta il grafico al contenitore
             )
 
-            # Uso colonne per centrare orizzontalmente
-            c_left, c_chart, c_right = st.columns([1, 6, 1]) # Ratio 1:6:1 forza il centro
+            c_left, c_chart, c_right = st.columns([1, 6, 1])
             with c_chart:
                 st.altair_chart(final_chart, use_container_width=True)
         else:
@@ -1991,6 +1987,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
