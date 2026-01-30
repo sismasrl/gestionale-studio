@@ -1292,7 +1292,7 @@ def render_dashboard():
         """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
-        # --- GRAFICO A CIAMBELLA (DONUT CHART) ---
+        # --- GRAFICO A CIAMBELLA (DONUT CHART) CENTRATO E SCALABILE ---
         st.markdown("<br>", unsafe_allow_html=True)
         
         if tot_netto_gen > 0:
@@ -1310,29 +1310,29 @@ def render_dashboard():
                 theta=alt.Theta("Fatturato Netto", stack=True)
             )
 
-            # Anello (Donut)
-            pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
+            # Anello (Donut) - Raggi ottimizzati per scalabilità
+            pie = base.mark_arc(outerRadius=110, innerRadius=75).encode(
                 color=alt.Color("Settore", scale=alt.Scale(domain=settori, range=palette), legend=None),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
             # LIVELLO 1: Codice Settore (RIL, ARC, INT) - In alto, grassetto
-            text_code = base.mark_text(radius=175, dy=-22, size=14, fontWeight="bold").encode(
+            text_code = base.mark_text(radius=155, dy=-22, size=14, fontWeight="bold").encode(
                 text=alt.Text("Label_Codice"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
             # LIVELLO 2: Valore Monetario - Al centro
-            text_val = base.mark_text(radius=175, dy=0, size=16).encode(
+            text_val = base.mark_text(radius=155, dy=0, size=16).encode(
                 text=alt.Text("Label_Valore"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("white") 
             )
 
             # LIVELLO 3: Percentuale - In basso, grigio
-            text_perc = base.mark_text(radius=175, dy=22, size=13).encode(
+            text_perc = base.mark_text(radius=155, dy=22, size=13).encode(
                 text=alt.Text("Label_Perc"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
                 color=alt.value("#d0d0d0") 
@@ -1343,12 +1343,21 @@ def render_dashboard():
                 text=f'€ {fmt_netto_gen}', size=24, font='Arial', color='white', fontWeight='bold'
             ).encode()
 
-            # Titolo rimosso e ALTEZZA AUMENTATA A 450
+            # Configurazione finale per centramento e scaling
             final_chart = (pie + text_code + text_val + text_perc + text_center).properties(
-                height=350
-            ).configure_view(strokeWidth=0)
+                height=450, # Altezza fissa
+                padding=20  # Padding interno per evitare tagli
+            ).configure_view(
+                strokeWidth=0
+            ).configure_autosize(
+                type='fit', 
+                contains='padding' # Questo adatta il grafico al contenitore
+            )
 
-            st.altair_chart(final_chart, use_container_width=True)
+            # Uso colonne per centrare orizzontalmente
+            c_left, c_chart, c_right = st.columns([1, 6, 1]) # Ratio 1:6:1 forza il centro
+            with c_chart:
+                st.altair_chart(final_chart, use_container_width=True)
         else:
             st.info("Nessun dato di fatturato disponibile per generare il grafico.")
 
@@ -1982,6 +1991,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
