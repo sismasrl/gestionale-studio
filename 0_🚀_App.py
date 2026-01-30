@@ -1219,15 +1219,23 @@ def render_dashboard():
             df_filtered = df.copy()
 
         # --- KPI CARDS (SETTORI) ---
-        palette = ["#14505f", "#1d6677", "#287d8f"]
+        palette = ["#14505f", "#1d6677", "#287d8f"] # Palette richiesta
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         df_filtered["Settore_Norm"] = df_filtered["Settore"].astype(str).str.upper().str.strip()
+
+        # Dizionario per accumulare dati per il grafico
+        chart_data_dict = {"Settore": [], "Fatturato Netto": [], "Color": []}
 
         for i, (nome, col) in enumerate(zip(settori, cols)):
             d_s = df_filtered[df_filtered["Settore_Norm"] == nome]
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
+            
+            # Aggiungo dati per il grafico
+            chart_data_dict["Settore"].append(nome)
+            chart_data_dict["Fatturato Netto"].append(tot_netto_settore)
+            chart_data_dict["Color"].append(palette[i])
             
             fmt_netto = forza_testo_visivo(tot_netto_settore).replace("€ ", "")
             fmt_lordo = forza_testo_visivo(tot_lordo_settore).replace("€ ", "")
@@ -1284,6 +1292,42 @@ def render_dashboard():
         """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
+        # --- NUOVO GRAFICO A TORTA (DONUT CHART) ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        if tot_netto_gen > 0:
+            df_chart = pd.DataFrame(chart_data_dict)
+            
+            # Grafico a Ciambella con Altair 
+            base = alt.Chart(df_chart).encode(
+                theta=alt.Theta("Fatturato Netto", stack=True)
+            )
+
+            pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
+                color=alt.Color("Settore", scale=alt.Scale(domain=settori, range=palette), legend=None),
+                order=alt.Order("Fatturato Netto", sort="descending"),
+                tooltip=["Settore", alt.Tooltip("Fatturato Netto", format=",.2f", title="Netto (€)")]
+            )
+
+            text = base.mark_text(radius=140).encode(
+                text=alt.Text("Fatturato Netto", format=",.0f"),
+                order=alt.Order("Fatturato Netto", sort="descending"),
+                color=alt.value("white")  # Testo bianco per tema scuro
+            )
+            
+            # Etichette centrali
+            text_center = alt.Chart(pd.DataFrame({'text': [f'€ {fmt_netto_gen}']})).mark_text(
+                text=f'€ {fmt_netto_gen}', size=20, font='Arial', color='white'
+            ).encode()
+
+            final_chart = (pie + text).properties(
+                title="Distribuzione Fatturato Netto per Settore"
+            ).configure_view(strokeWidth=0).configure_title(color='white')
+
+            st.altair_chart(final_chart, use_container_width=True)
+        else:
+            st.info("Nessun dato di fatturato disponibile per generare il grafico.")
+
         st.markdown("---")
         st.markdown("<h2 style='text-align: center;'>GESTIONE COMMESSE</h2>", unsafe_allow_html=True)
 
@@ -1317,22 +1361,17 @@ def render_dashboard():
                     for idx, row in df.iterrows():
                         # A. Gestione Foglio Commesse (Flattening)
                         commessa_dict = row.to_dict()
-                        
-                        # Parsing JSON per estrarre dettagli
                         try:
                             dati = json.loads(str(row.get("Dati_JSON", "{}")))
                         except: dati = {}
                         
-                        # Aggiungi colonne helper per modifica facile
                         commessa_dict["Perc_Portatore"] = dati.get("percentages", {}).get("portatore", 10)
                         commessa_dict["Perc_Societa"] = dati.get("percentages", {}).get("societa", 10)
                         commessa_dict["Lista_Servizi"] = ", ".join(dati.get("servizi", []))
                         commessa_dict["Dettagli_Servizi"] = dati.get("dettagli_servizi", "")
                         
-                        # Rimuovi colonne calcolate inutili per l'export statico
                         cols_drop = ["_Fatt_Netto_Calc", "_Fatt_Lordo_Calc", "_Piano_Netto_Calc", "Settore_Norm", "Dati_JSON"]
                         for c in cols_drop: commessa_dict.pop(c, None)
-                        
                         rows_commesse.append(commessa_dict)
                         
                         # B. Gestione Foglio Piano Economico
@@ -1340,23 +1379,20 @@ def render_dashboard():
                         incassi = dati.get("incassi", [])
                         for item in incassi:
                             if isinstance(item, dict):
-                                item["Codice"] = codice # Link chiave esterna
+                                item["Codice"] = codice 
                                 rows_piano.append(item)
                                 
-                        # C. Gestione Foglio Costi (Unificato con colonna Tipo)
-                        # Soci
+                        # C. Gestione Foglio Costi 
                         for item in dati.get("soci", []):
                             if isinstance(item, dict):
                                 item["Codice"] = codice
                                 item["Tipo_Riga"] = "Socio"
                                 rows_costi.append(item)
-                        # Collaboratori
                         for item in dati.get("collab", []):
                             if isinstance(item, dict):
                                 item["Codice"] = codice
                                 item["Tipo_Riga"] = "Collab"
                                 rows_costi.append(item)
-                        # Spese
                         for item in dati.get("spese", []):
                             if isinstance(item, dict):
                                 item["Codice"] = codice
@@ -1368,7 +1404,6 @@ def render_dashboard():
                     df_exp_piano = pd.DataFrame(rows_piano)
                     df_exp_costi = pd.DataFrame(rows_costi)
                     
-                    # Ordina colonne per leggibilità (Opzionale)
                     if not df_exp_piano.empty:
                         cols_p = ["Codice", "Voce", "Stato", "Importo netto €", "IVA %", "Data Saldo", "Data Fattura", "Fattura"]
                         final_cols_p = [c for c in cols_p if c in df_exp_piano.columns] + [c for c in df_exp_piano.columns if c not in cols_p]
@@ -1407,7 +1442,6 @@ def render_dashboard():
             df_to_edit = df_filtered.copy()
 
             def calcola_stato_colore(row):
-                # 🔴 PRIORITÀ 1: ROSSO
                 try:
                     raw_json = row.get("Dati_JSON", "{}")
                     if not pd.isna(raw_json) and str(raw_json).strip() != "":
@@ -1422,11 +1456,8 @@ def render_dashboard():
                                         return "🔴"
                 except: pass
                 
-                # 🟡 PRIORITÀ 2: GIALLO
                 stato_raw = str(row.get("Stato", "")).strip().lower()
                 if stato_raw in ["aperta", "in attesa"] or "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
-                
-                # 🟢 DEFAULT: VERDE
                 return "🟢"
 
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
@@ -1470,9 +1501,9 @@ def render_dashboard():
             rows_selected = edited_df[edited_df["Seleziona"] == True]
             
             st.markdown("<br>", unsafe_allow_html=True)
-            col_mod, col_del = st.columns([0.4, 0.6]) # Spazio per Modifica e Zona Pericolo
+            col_mod, col_del = st.columns([0.4, 0.6]) 
 
-            # 1. TASTO MODIFICA (Visibile solo se 1 riga selezionata o nessuna)
+            # 1. TASTO MODIFICA 
             with col_mod:
                 if st.button("✏️ MODIFICA COMMESSA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
@@ -1484,23 +1515,18 @@ def render_dashboard():
                     else:
                         st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
-            # 2. TASTO ELIMINA (Nascosto in Expander - Stile Richiesto)
+            # 2. TASTO ELIMINA
             with col_del:
                 if not rows_selected.empty:
-                    # Lo stile esatto che hai chiesto: Expander -> Bottone
                     with st.expander(f"⚠️ ZONA PERICOLO ({len(rows_selected)} selez.)"):
                         st.markdown("L'eliminazione è definitiva.")
                         if st.button("🗑️ ELIMINA DEFINITIVAMENTE", type="primary", key="btn_del_dashboard"):
                             codici_da_eliminare = rows_selected["Codice"].tolist()
-                            
-                            # Esegue l'eliminazione
                             elimina_record_batch(codici_da_eliminare, "Foglio1", "Codice")
-                            
                             st.success(f"Eliminati {len(codici_da_eliminare)} record.")
                             time.sleep(1)
                             st.rerun()
                 else:
-                    # Messaggio vuoto o placeholder per mantenere l'allineamento
                     st.write("")
                 
 # --- 6. ORGANIGRAMMA ---
@@ -1940,6 +1966,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
