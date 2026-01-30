@@ -1219,7 +1219,7 @@ def render_dashboard():
             df_filtered = df.copy()
 
         # --- KPI CARDS (SETTORI) ---
-        palette = ["#14505f", "#1d6677", "#287d8f"] # Palette richiesta
+        palette = ["#14505f", "#1d6677", "#287d8f"]
         cols = st.columns(3)
         settori = ["RILIEVO", "ARCHEOLOGIA", "INTEGRATI"]
         df_filtered["Settore_Norm"] = df_filtered["Settore"].astype(str).str.upper().str.strip()
@@ -1232,7 +1232,7 @@ def render_dashboard():
             tot_netto_settore = d_s['_Fatt_Netto_Calc'].sum()
             tot_lordo_settore = d_s['_Fatt_Lordo_Calc'].sum()
             
-            # Aggiungo dati per il grafico
+            # Accumulo dati
             chart_data_dict["Settore"].append(nome)
             chart_data_dict["Fatturato Netto"].append(tot_netto_settore)
             chart_data_dict["Color"].append(palette[i])
@@ -1292,35 +1292,50 @@ def render_dashboard():
         """
         st.markdown(card_total_html, unsafe_allow_html=True)
 
-        # --- NUOVO GRAFICO A TORTA (DONUT CHART) ---
+        # --- GRAFICO A TORTA (DONUT CHART) CON % E VALORI ---
         st.markdown("<br>", unsafe_allow_html=True)
         
         if tot_netto_gen > 0:
             df_chart = pd.DataFrame(chart_data_dict)
             
-            # Grafico a Ciambella con Altair 
+            # Calcolo Percentuali e Formattazione Etichette
+            df_chart["Percentuale"] = df_chart["Fatturato Netto"] / tot_netto_gen
+            # Etichetta Valore (es: € 10.000) - arrotondato all'euro per pulizia
+            df_chart["Label_Valore"] = df_chart["Fatturato Netto"].apply(lambda x: f"€ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            # Etichetta Percentuale (es: 33.3%)
+            df_chart["Label_Perc"] = df_chart["Percentuale"].apply(lambda x: f"{x:.1%}")
+
             base = alt.Chart(df_chart).encode(
                 theta=alt.Theta("Fatturato Netto", stack=True)
             )
 
+            # Anello (Donut)
             pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
                 color=alt.Color("Settore", scale=alt.Scale(domain=settori, range=palette), legend=None),
                 order=alt.Order("Fatturato Netto", sort="descending"),
-                tooltip=["Settore", alt.Tooltip("Fatturato Netto", format=",.2f", title="Netto (€)")]
+                tooltip=["Settore", "Label_Valore", "Label_Perc"]
             )
 
-            text = base.mark_text(radius=140).encode(
-                text=alt.Text("Fatturato Netto", format=",.0f"),
+            # Testo 1: Valore Monetario (Bianco)
+            text_val = base.mark_text(radius=140).encode(
+                text=alt.Text("Label_Valore"),
                 order=alt.Order("Fatturato Netto", sort="descending"),
-                color=alt.value("white")  # Testo bianco per tema scuro
+                color=alt.value("white") 
+            )
+
+            # Testo 2: Percentuale (Grigio chiaro, sotto il valore)
+            text_perc = base.mark_text(radius=140, dy=15).encode(
+                text=alt.Text("Label_Perc"),
+                order=alt.Order("Fatturato Netto", sort="descending"),
+                color=alt.value("#d0d0d0") 
             )
             
-            # Etichette centrali
+            # Etichetta Centrale (Totale)
             text_center = alt.Chart(pd.DataFrame({'text': [f'€ {fmt_netto_gen}']})).mark_text(
                 text=f'€ {fmt_netto_gen}', size=20, font='Arial', color='white'
             ).encode()
 
-            final_chart = (pie + text).properties(
+            final_chart = (pie + text_val + text_perc).properties(
                 title="Distribuzione Fatturato Netto per Settore"
             ).configure_view(strokeWidth=0).configure_title(color='white')
 
@@ -1353,13 +1368,11 @@ def render_dashboard():
                 st.markdown("Genera un file Excel avanzato con fogli separati per Commesse, Piano Economico e Costi, facile da modificare.")
                 
                 if st.button("📥 SCARICA EXCEL SMART (EDITABILE)", use_container_width=True):
-                    # --- 1. PREPARAZIONE LISTE PER I FOGLI ---
                     rows_commesse = []
                     rows_piano = []
                     rows_costi = []
                     
                     for idx, row in df.iterrows():
-                        # A. Gestione Foglio Commesse (Flattening)
                         commessa_dict = row.to_dict()
                         try:
                             dati = json.loads(str(row.get("Dati_JSON", "{}")))
@@ -1374,7 +1387,6 @@ def render_dashboard():
                         for c in cols_drop: commessa_dict.pop(c, None)
                         rows_commesse.append(commessa_dict)
                         
-                        # B. Gestione Foglio Piano Economico
                         codice = str(row["Codice"])
                         incassi = dati.get("incassi", [])
                         for item in incassi:
@@ -1382,7 +1394,6 @@ def render_dashboard():
                                 item["Codice"] = codice 
                                 rows_piano.append(item)
                                 
-                        # C. Gestione Foglio Costi 
                         for item in dati.get("soci", []):
                             if isinstance(item, dict):
                                 item["Codice"] = codice
@@ -1399,7 +1410,6 @@ def render_dashboard():
                                 item["Tipo_Riga"] = "Spese"
                                 rows_costi.append(item)
 
-                    # --- 2. CREAZIONE DATAFRAMES ---
                     df_exp_main = pd.DataFrame(rows_commesse)
                     df_exp_piano = pd.DataFrame(rows_piano)
                     df_exp_costi = pd.DataFrame(rows_costi)
@@ -1414,7 +1424,6 @@ def render_dashboard():
                         final_cols_c = [c for c in cols_c if c in df_exp_costi.columns] + [c for c in df_exp_costi.columns if c not in cols_c]
                         df_exp_costi = df_exp_costi[final_cols_c]
 
-                    # --- 3. SCRITTURA SU EXCEL ---
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                         df_exp_main.to_excel(writer, index=False, sheet_name='Commesse')
@@ -1456,8 +1465,8 @@ def render_dashboard():
                                         return "🔴"
                 except: pass
                 
-                stato_raw = str(row.get("Stato", "")).strip().lower()
-                if stato_raw in ["aperta", "in attesa"] or "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
+                stato_raw = str(row.get("Stato", "")).lower().strip()
+                if "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
                 return "🟢"
 
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
@@ -1503,7 +1512,6 @@ def render_dashboard():
             st.markdown("<br>", unsafe_allow_html=True)
             col_mod, col_del = st.columns([0.4, 0.6]) 
 
-            # 1. TASTO MODIFICA 
             with col_mod:
                 if st.button("✏️ MODIFICA COMMESSA SELEZIONATA", use_container_width=True):
                     if len(rows_selected) == 1:
@@ -1515,7 +1523,6 @@ def render_dashboard():
                     else:
                         st.warning("⚠️ Puoi modificare solo una commessa alla volta.")
 
-            # 2. TASTO ELIMINA
             with col_del:
                 if not rows_selected.empty:
                     with st.expander(f"⚠️ ZONA PERICOLO ({len(rows_selected)} selez.)"):
@@ -1966,6 +1973,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
