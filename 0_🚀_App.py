@@ -455,42 +455,40 @@ def render_commessa_form(data=None):
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
-        # --- CORREZIONE CODICE: Ricalcolo intelligente al cambio settore ---
+        # --- BLOCCO CODICE (MODIFICATO: EDITABILE) ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
             prefisso_target = mappa_settori.get(settore, "GEN")
             
-            # Logica: Calcoliamo un nuovo numero SE è una nuova commessa OPPURE se in modifica cambia il prefisso/anno
+            # --- CALCOLO SUGGERIMENTO AUTOMATICO ---
+            # Calcoliamo un suggerimento SOLO se:
+            # 1. È una nuova commessa (e non abbiamo ancora scritto nulla)
+            # 2. In modifica: se l'utente cambia Settore o Anno rispetto all'originale
+            
+            suggerimento_codice = ""
             calcola_nuovo = False
             
             if not is_edit:
-                # Caso 1: Nuova Commessa -> Calcola sempre
                 calcola_nuovo = True
             elif is_edit and val_codice_originale:
-                # Caso 2: Modifica -> Controlliamo se è cambiato il settore o l'anno
+                # Recupera prefisso e anno dal codice originale per vedere se sono cambiati
                 parts_old = re.split(r'[-/]', val_codice_originale)
                 prefisso_old = parts_old[0] if len(parts_old) > 0 else ""
                 
-                # Tentativo di recuperare l'anno dal vecchio codice
-                try:
-                    anno_old_code = int(parts_old[1]) if len(parts_old) > 1 and parts_old[1].isdigit() else val_anno
-                except: 
-                    anno_old_code = val_anno
+                try: anno_old_code = int(parts_old[1]) if len(parts_old) > 1 else val_anno
+                except: anno_old_code = val_anno
 
-                # Se il prefisso target è diverso da quello attuale O l'anno è diverso -> DEVO RICALCOLARE LA NUMERAZIONE
+                # Se cambia la struttura (Anno o Settore), ricalcolo il suggerimento
                 if prefisso_old != prefisso_target or anno_old_code != anno:
                     calcola_nuovo = True
                 else:
-                    # Se non è cambiato nulla di strutturale, mantengo il codice originale
-                    codice_display = val_codice_originale
+                    suggerimento_codice = val_codice_originale # Mantengo quello attuale
 
             if calcola_nuovo:
-                # Logica di ricerca del prossimo numero libero per il NUOVO settore/anno
+                # Logica di ricerca prossimo numero libero
                 base_code_search = f"{prefisso_target}/{anno}-" 
-                
                 df_check = carica_dati("Foglio1")
                 max_num = 0
-                
                 if not df_check.empty and "Codice" in df_check.columns:
                     codici_esistenti = df_check["Codice"].dropna().astype(str)
                     for c in codici_esistenti:
@@ -500,12 +498,27 @@ def render_commessa_form(data=None):
                                 num = int(suffix)
                                 if num > max_num: max_num = num
                             except: pass
-                
                 next_num = max_num + 1
-                codice_display = f"{base_code_search}{next_num:03d}"
+                suggerimento_codice = f"{base_code_search}{next_num:03d}"
 
-            st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
-            codice_finale = codice_display
+            # --- WIDGET EDITABILE ---
+            # Usiamo session_state per gestire il valore che può essere sovrascritto dall'utente
+            # Se è la prima volta che entriamo o se cambia il calcolo automatico, aggiorniamo il valore
+            
+            key_codice = "input_codice_manuale"
+            
+            # Se stiamo ricalcolando il suggerimento (es. cambio settore), forziamo il valore nel widget
+            # Ma solo se l'utente non sta attivamente scrivendo (gestito ricaricando solo agli eventi chiave)
+            if "last_suggested_code" not in st.session_state:
+                st.session_state["last_suggested_code"] = ""
+
+            # Se il suggerimento calcolato è diverso dall'ultimo mostrato, aggiorniamo il campo
+            if suggerimento_codice != st.session_state["last_suggested_code"]:
+                 st.session_state[key_codice] = suggerimento_codice
+                 st.session_state["last_suggested_code"] = suggerimento_codice
+
+            # Render del campo EDITABILE (disabled=False)
+            codice_finale = st.text_input("Codice Commessa (Editabile)", key=key_codice, help="Puoi modificare manualmente questo codice se necessario.")
 
         with c4:
             idx_stato = ["APERTA", "CHIUSA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
@@ -802,6 +815,22 @@ def render_commessa_form(data=None):
     if st.button("SALVA / AGGIORNA SCHEDA", use_container_width=True):
         if not nome_cliente_finale or not nome_commessa: 
             st.error("Nome Commessa e Nome Cliente sono obbligatori")
+        elif not codice_finale:
+            st.error("Il Codice Commessa è obbligatorio.")
+        else:
+            # --- CHECK DUPLICATI MANUALE ---
+            # Se sto inserendo un NUOVO codice (o in new o in edit cambiando codice), verifico che non esista già
+            check_duplicate = False
+            if not is_edit: 
+                check_duplicate = True
+            elif is_edit and codice_finale != val_codice_originale:
+                check_duplicate = True
+            
+            if check_duplicate:
+                df_dup = carica_dati("Foglio1")
+                if not df_dup.empty and codice_finale in df_dup["Codice"].astype(str).values:
+                    st.error(f"⚠️ ERRORE: Il codice '{codice_finale}' esiste già in archivio! Cambialo manualmente.")
+                    st.stop() # Ferma l'esecuzione qui    
         else:
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
@@ -2033,6 +2062,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
