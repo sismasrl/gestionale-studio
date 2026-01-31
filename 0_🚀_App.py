@@ -1803,7 +1803,8 @@ def render_organigramma():
 
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
-    import textwrap # Import necessario per correggere l'anteprima
+    import textwrap
+    import streamlit.components.v1 as components
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1855,7 +1856,6 @@ def render_preventivi_page():
         with c2:
             st.markdown("### 2. Dati Cliente")
             cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
-            # Aggiungiamo campi liberi per l'indirizzo se non presenti nel DB
             indirizzo_cli = st.text_area("Indirizzo Completo Cliente (per intestazione)", placeholder="Es: Via Roma 1, 50100 Firenze (FI)")
             oggetto_prev = st.text_area("Oggetto del Preventivo", height=70)
 
@@ -1902,13 +1902,20 @@ def render_preventivi_page():
             except: pass
         
         tot_lordo = tot_netto + tot_iva
+
+        # --- 4. CONDIZIONI EDITABILI ---
+        st.markdown("### 4. Condizioni Contrattuali")
+        col_cond1, col_cond2 = st.columns(2)
+        with col_cond1:
+            giorni_preavviso = st.number_input("Giorni di Preavviso Minimo", min_value=1, value=10, step=1)
+        with col_cond2:
+            perc_anticipo = st.number_input("Percentuale Anticipo (%)", min_value=0, max_value=100, value=15, step=5)
         
         # Convertiamo la data in formato italiano testuale per l'intestazione
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
 
         # --- GENERAZIONE HTML (TEMPLATE WORD SISMA) ---
-        # Nota: Usiamo textwrap.dedent per rimuovere l'indentazione che rompe l'anteprima
         righe_html = ""
         for item in dettagli_list:
             righe_html += f"""
@@ -1918,10 +1925,17 @@ def render_preventivi_page():
             </tr>
             """
         
-        # Costruiamo il template HTML grezzo
+        # Link diretto immagine (Google Drive export=view)
+        img_url = "https://drive.google.com/uc?export=view&id=1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
+
+        # Costruiamo il template HTML grezzo con IMMAGINE INTESTAZIONE
         raw_html = f"""
         <div style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; max-width: 800px; margin: 0 auto; background-color: white; padding: 40px; border: 1px solid #ddd;">
             
+            <div style="text-align: center; margin-bottom: 30px;">
+                <img src="{img_url}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 150px;">
+            </div>
+
             <div style="margin-bottom: 30px;">
                 <p style="font-weight: bold; font-size: 12pt; margin-bottom: 5px;">Preventivo n. {new_code}</p>
                 
@@ -1961,11 +1975,14 @@ def render_preventivi_page():
             <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
                 <p><b>Note e Condizioni:</b></p>
                 <ul style="padding-left: 20px; margin: 0;">
-                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> (se applicabile) da contabilizzare secondo l'aliquota prevista dalla legge alla data della fatturazione.</li>
-                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d’opera dovranno essere preventivamente valutate, prezzate ed approvate dalla committenza.</li>
-                    <li style="margin-bottom: 5px;">Nel presente preventivo non sono conteggiati supporti fisici multimediali (es. totem, led-wall) né sviluppo di App/Siti Web, salvo diversa specifica.</li>
-                    <li style="margin-bottom: 5px;"><b>Pagamento:</b> La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni 20 (solari) e in seguito al pagamento dell’<b>anticipo del 15%</b> della somma totale prevista.</li>
-                    <li>La Società SISMA srl si riserva il diritto di utilizzare gli elaborati digitali sviluppati per scopi autopromozionali, fatti salvi i diritti della Proprietà del Bene.</li>
+                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l'aliquota prevista dalla legge alla data della fatturazione.</li>
+                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d’opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
+                    <li style="margin-bottom: 5px;">Nel presente preventivo non sono altresì conteggiate eventuali opere provvisionali che si rendessero necessarie per la realizzazione del rilievo. Qualora se ne dovesse riscontrare la necessità tali opere dovranno essere contabilizzate a parte o realizzate direttamente dalla Committenza.</li>
+                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all’esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
+                    <li style="margin-bottom: 5px;">Per ottimizzare le tempistiche previste per le varie attività si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito di studio e degli ambienti interni.</li>
+                    <li style="margin-bottom: 5px;">Qualora venga accettato, il presente preventivo, dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
+                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell’anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
+                    <li>La Società SISMA srl, qualora venisse incaricata per i sopracitati servizi, si riserverà il diritto di utilizzare gli elaborati digitali sviluppati nel corso del progetto per scopi autopromozionali, fatti ovviamente salvo i diritti della Proprietà del Bene.</li>
                 </ul>
                 <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
             </div>
@@ -1988,13 +2005,10 @@ def render_preventivi_page():
         </div>
         """
         
-        # Puliamo l'HTML dall'indentazione per farlo funzionare nel Markdown/HTML component
         html_template = textwrap.dedent(raw_html)
 
         # --- VISUALIZZAZIONE E AZIONI ---
         with st.expander("👁️ ANTEPRIMA DOCUMENTO (Clicca per espandere)", expanded=True):
-            # Usiamo st.components.v1.html che è molto più affidabile per renderizzare HTML complesso
-            import streamlit.components.v1 as components
             components.html(html_template, height=800, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -2077,6 +2091,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
