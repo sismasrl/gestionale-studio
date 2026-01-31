@@ -486,8 +486,8 @@ def render_commessa_form(data=None):
             codice_finale = codice_display
 
         with c4:
-            idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
-            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
+            idx_stato = ["APERTA", "CHIUSA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
+            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
@@ -1469,18 +1469,42 @@ def render_dashboard():
                     raw_json = row.get("Dati_JSON", "{}")
                     if not pd.isna(raw_json) and str(raw_json).strip() != "":
                         dati = json.loads(str(raw_json))
-                        for cat in ["soci", "collab", "spese"]:
+                        
+                        # PRIORITÀ 1 (ROSSO): Collaboratori o Spese "Da pagare"
+                        for cat in ["collab", "spese"]:
                             items = dati.get(cat, [])
                             for it in items:
                                 if isinstance(it, dict):
-                                    s_pag = it.get("Stato", "")
+                                    s_pag = str(it.get("Stato", "")).strip()
                                     i_val = pulisci_per_calcoli(it.get("Importo", 0))
                                     if s_pag == "Da pagare" and abs(i_val) > 0.01:
                                         return "🔴"
+                        
+                        # PRIORITÀ 2 (FUCSIA): Soci "Da pagare"
+                        soci_items = dati.get("soci", [])
+                        for it in soci_items:
+                            if isinstance(it, dict):
+                                s_pag = str(it.get("Stato", "")).strip()
+                                i_val = pulisci_per_calcoli(it.get("Importo", 0))
+                                if s_pag == "Da pagare" and abs(i_val) > 0.01:
+                                    return "🟣"
+
+                        # PRIORITÀ 3 (BLU): Soci "Conteggiato"
+                        for it in soci_items:
+                            if isinstance(it, dict):
+                                s_pag = str(it.get("Stato", "")).strip()
+                                i_val = pulisci_per_calcoli(it.get("Importo", 0))
+                                if s_pag == "Conteggiato" and abs(i_val) > 0.01:
+                                    return "🔵"
+
                 except: pass
                 
-                stato_raw = str(row.get("Stato", "")).lower().strip()
-                if "aperta" in stato_raw or "attesa" in stato_raw: return "🟡"
+                # PRIORITÀ 4 (GIALLO): Stato Commessa Aperta
+                stato_raw = str(row.get("Stato", "")).strip().lower()
+                if "aperta" in stato_raw: 
+                    return "🟡"
+                
+                # DEFAULT (VERDE): Tutto chiuso/saldato
                 return "🟢"
 
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
@@ -1502,7 +1526,7 @@ def render_dashboard():
             cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
-            st.caption("LEGENDA: 🔴 Ci sono pagamenti da saldare | 🟡 Commessa Aperta/In Attesa | 🟢 Chiusa e Saldata")
+            st.caption("LEGENDA: 🔴 Collaboratori da saldare | 🟣 Soci da saldare | 🔵 Soci conteggiati | 🟡 Commessa Aperta | 🟢 Chiusa e Saldata")
 
             edited_df = st.data_editor(
                 df_to_edit[actual_cols],
@@ -1987,6 +2011,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
