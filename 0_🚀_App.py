@@ -486,8 +486,8 @@ def render_commessa_form(data=None):
             codice_finale = codice_display
 
         with c4:
-            idx_stato = ["APERTA", "CHIUSA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
-            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA"], index=idx_stato)
+            idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
+            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
@@ -2011,6 +2011,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
