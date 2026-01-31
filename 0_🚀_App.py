@@ -1925,15 +1925,26 @@ def render_preventivi_page():
             </tr>
             """
         
-        # Link diretto immagine (Google Drive export=view)
-        img_url = "https://drive.google.com/uc?export=view&id=1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
+        # LINK IMMAGINE AGGIORNATO (Formato Thumbnail è più sicuro per visualizzazione diretta)
+        # Nota: L'immagine su Drive deve essere impostata come "Chiunque abbia il link può visualizzare"
+        img_url = "https://drive.google.com/thumbnail?id=1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up&sz=w1000"
 
-        # Costruiamo il template HTML grezzo con IMMAGINE INTESTAZIONE
+        # Costruiamo il template HTML con META CHARSET UTF-8 per correggere gli accenti
         raw_html = f"""
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; max-width: 800px; margin: 0 auto; background-color: white; padding: 40px; border: 1px solid #ddd;">
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
+                .page {{ max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
+            </style>
+        </head>
+        <body>
+        <div class="page">
             
             <div style="text-align: center; margin-bottom: 30px;">
-                <img src="{img_url}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 150px;">
+                <img src="{img_url}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;">
             </div>
 
             <div style="margin-bottom: 30px;">
@@ -2003,6 +2014,8 @@ def render_preventivi_page():
                 SISMA S.R.L. - P.IVA 07028190483
             </div>
         </div>
+        </body>
+        </html>
         """
         
         html_template = textwrap.dedent(raw_html)
@@ -2091,6 +2104,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
