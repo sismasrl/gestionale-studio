@@ -190,7 +190,7 @@ def get_worksheet(sheet_name="Foglio1"):
         return None
 
 # --- MODIFICA 1: Aggiunto decoratore Cache ---
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=10)
 def carica_dati(sheet_name="Foglio1"):
     wks = get_worksheet(sheet_name)
     if not wks: return pd.DataFrame()
@@ -2069,6 +2069,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
