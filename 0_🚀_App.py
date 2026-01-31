@@ -455,22 +455,42 @@ def render_commessa_form(data=None):
             val_sett = settori.index(val_sett_raw) if val_sett_raw in settori else 0
             settore = st.selectbox("Settore ▼", settori, index=val_sett, key="f_settore")
         
+        # --- CORREZIONE CODICE: Ricalcolo intelligente al cambio settore ---
         with c1:
             mappa_settori = {"RILIEVO": "RIL", "ARCHEOLOGIA": "ARC", "INTEGRATI": "INT"}
-            codice_display = val_codice_originale
-            if is_edit and val_codice_originale:
-                parts = re.split(r'[-/]', val_codice_originale)
-                if len(parts) >= 3:
-                    nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    codice_display = f"{nuovo_prefisso}/{parts[1]}-{parts[2]}"
-                elif len(parts) >= 2:
-                    nuovo_prefisso = mappa_settori.get(settore, "GEN")
-                    codice_display = f"{nuovo_prefisso}/{parts[-1]}"
-            elif not is_edit:
-                prefisso = mappa_settori.get(settore, "RIL")
-                base_code_search = f"{prefisso}/{anno}-" 
+            prefisso_target = mappa_settori.get(settore, "GEN")
+            
+            # Logica: Calcoliamo un nuovo numero SE è una nuova commessa OPPURE se in modifica cambia il prefisso/anno
+            calcola_nuovo = False
+            
+            if not is_edit:
+                # Caso 1: Nuova Commessa -> Calcola sempre
+                calcola_nuovo = True
+            elif is_edit and val_codice_originale:
+                # Caso 2: Modifica -> Controlliamo se è cambiato il settore o l'anno
+                parts_old = re.split(r'[-/]', val_codice_originale)
+                prefisso_old = parts_old[0] if len(parts_old) > 0 else ""
+                
+                # Tentativo di recuperare l'anno dal vecchio codice
+                try:
+                    anno_old_code = int(parts_old[1]) if len(parts_old) > 1 and parts_old[1].isdigit() else val_anno
+                except: 
+                    anno_old_code = val_anno
+
+                # Se il prefisso target è diverso da quello attuale O l'anno è diverso -> DEVO RICALCOLARE LA NUMERAZIONE
+                if prefisso_old != prefisso_target or anno_old_code != anno:
+                    calcola_nuovo = True
+                else:
+                    # Se non è cambiato nulla di strutturale, mantengo il codice originale
+                    codice_display = val_codice_originale
+
+            if calcola_nuovo:
+                # Logica di ricerca del prossimo numero libero per il NUOVO settore/anno
+                base_code_search = f"{prefisso_target}/{anno}-" 
+                
                 df_check = carica_dati("Foglio1")
                 max_num = 0
+                
                 if not df_check.empty and "Codice" in df_check.columns:
                     codici_esistenti = df_check["Codice"].dropna().astype(str)
                     for c in codici_esistenti:
@@ -480,8 +500,10 @@ def render_commessa_form(data=None):
                                 num = int(suffix)
                                 if num > max_num: max_num = num
                             except: pass
+                
                 next_num = max_num + 1
                 codice_display = f"{base_code_search}{next_num:03d}"
+
             st.text_input("Codice (Auto-aggiornato)", value=codice_display, disabled=True)
             codice_finale = codice_display
 
@@ -2011,6 +2033,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
