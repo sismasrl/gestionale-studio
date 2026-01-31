@@ -487,7 +487,13 @@ def render_commessa_form(data=None):
             if calcola_nuovo:
                 # Logica di ricerca prossimo numero libero
                 base_code_search = f"{prefisso_target}/{anno}-" 
-                df_check = carica_dati("Foglio1")
+                
+                # OPZIONALE: Se usi st.cache_data su carica_dati, questa riga pulisce la cache
+                # per essere sicuri di leggere l'ultimo numero salvato un secondo fa.
+                st.cache_data.clear() 
+                
+                df_check = carica_dati("Foglio1") # Ora ricarica sicuramente da Google Sheets
+                
                 max_num = 0
                 if not df_check.empty and "Codice" in df_check.columns:
                     codici_esistenti = df_check["Codice"].dropna().astype(str)
@@ -498,6 +504,7 @@ def render_commessa_form(data=None):
                                 num = int(suffix)
                                 if num > max_num: max_num = num
                             except: pass
+                
                 next_num = max_num + 1
                 suggerimento_codice = f"{base_code_search}{next_num:03d}"
 
@@ -2062,6 +2069,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
