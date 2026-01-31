@@ -1803,6 +1803,8 @@ def render_organigramma():
 
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
+    import textwrap # Import necessario per correggere l'anteprima
+
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
@@ -1906,6 +1908,7 @@ def render_preventivi_page():
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
 
         # --- GENERAZIONE HTML (TEMPLATE WORD SISMA) ---
+        # Nota: Usiamo textwrap.dedent per rimuovere l'indentazione che rompe l'anteprima
         righe_html = ""
         for item in dettagli_list:
             righe_html += f"""
@@ -1915,9 +1918,9 @@ def render_preventivi_page():
             </tr>
             """
         
-        # Testi Standard SISMA (Presi dal DOCX)
-        html_template = f"""
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; max-width: 800px; margin: 0 auto; background-color: white; padding: 40px;">
+        # Costruiamo il template HTML grezzo
+        raw_html = f"""
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; max-width: 800px; margin: 0 auto; background-color: white; padding: 40px; border: 1px solid #ddd;">
             
             <div style="margin-bottom: 30px;">
                 <p style="font-weight: bold; font-size: 12pt; margin-bottom: 5px;">Preventivo n. {new_code}</p>
@@ -1984,10 +1987,15 @@ def render_preventivi_page():
             </div>
         </div>
         """
+        
+        # Puliamo l'HTML dall'indentazione per farlo funzionare nel Markdown/HTML component
+        html_template = textwrap.dedent(raw_html)
 
         # --- VISUALIZZAZIONE E AZIONI ---
         with st.expander("👁️ ANTEPRIMA DOCUMENTO (Clicca per espandere)", expanded=True):
-            st.markdown(html_template, unsafe_allow_html=True)
+            # Usiamo st.components.v1.html che è molto più affidabile per renderizzare HTML complesso
+            import streamlit.components.v1 as components
+            components.html(html_template, height=800, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         c_save, c_down = st.columns([1, 1])
@@ -2069,6 +2077,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
