@@ -831,7 +831,7 @@ def render_commessa_form(data=None):
                 if not df_dup.empty and codice_finale in df_dup["Codice"].astype(str).values:
                     st.error(f"⚠️ ERRORE: Il codice '{codice_finale}' esiste già in archivio! Cambialo manualmente.")
                     st.stop() # Ferma l'esecuzione qui    
-        else:
+                    
             if nome_cliente_finale not in lista_clienti:
                 st.toast(f"Nuovo cliente: aggiungo '{nome_cliente_finale}'...", icon="👤")
                 rec_cliente = {"Denominazione": nome_cliente_finale, "P_IVA": p_iva, "Sede": indirizzo, "Referente": referente, "Telefono": tel_ref, "Attivo": "TRUE", "Settore": "ALTRO"}
@@ -2062,6 +2062,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
