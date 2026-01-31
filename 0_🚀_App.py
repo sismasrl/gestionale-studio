@@ -486,8 +486,8 @@ def render_commessa_form(data=None):
             codice_finale = codice_display
 
         with c4:
-            idx_stato = ["APERTA", "CHIUSA", "IN ATTESA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
-            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA", "IN ATTESA"], index=idx_stato)
+            idx_stato = ["APERTA", "CHIUSA"].index(data["Stato"]) if is_edit and "Stato" in data else 0
+            stato_header = st.selectbox("Stato Commessa ▼", ["APERTA", "CHIUSA"], index=idx_stato)
         
         st.markdown("<br>", unsafe_allow_html=True)
         nome_commessa = st.text_input("Nome Commessa", value=val_oggetto)
@@ -977,7 +977,7 @@ def render_clienti_page():
         st.markdown("<h3 style='text-align: center;'>RUBRICA</h3>", unsafe_allow_html=True)
         
         # --- SEZIONE IMPORT / EXPORT ---
-        with st.expander("📂 IMPORT / EXPORT MASSIVO (Excel)", expanded=False):
+        with st.expander("📂 IMPORT / EXPORT", expanded=False):
             k1, k2 = st.columns(2)
             colonne_export = ["Denominazione", "P_IVA", "Sede", "Referente", "Telefono", "Email", "Contatto_SISMA", "Settore", "Attivo", "Note"]
 
@@ -1379,9 +1379,9 @@ def render_dashboard():
         with c_actions:
             tab_backup, tab_import = st.tabs(["📤 ESPORTA / BACKUP", "📥 IMPORTA DA EXCEL"])
             with tab_backup:
-                st.markdown("Genera un file Excel avanzato con fogli separati per Commesse, Piano Economico e Costi, facile da modificare.")
+                st.markdown("Genera un file Excel avanzato con fogli separati per Commesse, Piano Economico e Costi")
                 
-                if st.button("📥 SCARICA EXCEL SMART (EDITABILE)", use_container_width=True):
+                if st.button("📥 SCARICA EXCEL", use_container_width=True):
                     rows_commesse = []
                     rows_piano = []
                     rows_costi = []
@@ -2011,6 +2011,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
