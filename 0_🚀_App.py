@@ -1806,6 +1806,7 @@ def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
     import base64
+    import requests # Necessario per scaricare l'immagine default
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1828,8 +1829,8 @@ def render_preventivi_page():
     # Helper formattazione
     fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # Helper Immagine to Base64 (per incorporarla nel file)
-    def get_image_base64(uploaded_file):
+    # Helper Immagine to Base64 (da Upload)
+    def get_image_base64_from_upload(uploaded_file):
         try:
             bytes_data = uploaded_file.getvalue()
             b64_str = base64.b64encode(bytes_data).decode()
@@ -1837,6 +1838,22 @@ def render_preventivi_page():
             return f"data:{mime_type};base64,{b64_str}"
         except:
             return ""
+
+    # Helper Immagine Default da Google Drive (Download Server-side)
+    @st.cache_data(show_spinner=False) # Cache per non scaricarla ogni volta che clicchi
+    def get_default_logo_base64():
+        # ID del file che mi hai fornito
+        file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                b64_str = base64.b64encode(response.content).decode()
+                # Assumiamo sia un PNG o JPG, il browser capirà
+                return f"data:image/png;base64,{b64_str}"
+        except:
+            return None
+        return None
 
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
@@ -1870,10 +1887,12 @@ def render_preventivi_page():
             indirizzo_cli = st.text_area("Indirizzo Completo Cliente (per intestazione)", placeholder="Es: Via Roma 1, 50100 Firenze (FI)")
             oggetto_prev = st.text_area("Oggetto del Preventivo", height=70)
 
-        # --- SEZIONE CARICAMENTO LOGO (Per risolvere il problema immagine) ---
-        st.markdown("### 3. Intestazione / Logo")
-        st.caption("Il link di Google Drive potrebbe non funzionare in tutti i browser. Per sicurezza, puoi caricare l'immagine qui sotto.")
-        uploaded_logo = st.file_uploader("Carica immagine intestazione (Opzionale)", type=['png', 'jpg', 'jpeg'])
+        # --- SEZIONE LOGO (Gestione Default + Override) ---
+        st.markdown("### 3. Intestazione")
+        # Scarichiamo il logo di default (una volta sola grazie alla cache)
+        default_logo_b64 = get_default_logo_base64()
+        
+        uploaded_logo = st.file_uploader("Il logo è impostato di default. Carica qui solo se vuoi cambiarlo per questo specifico preventivo:", type=['png', 'jpg', 'jpeg'])
 
         st.markdown("### 4. Voci di Costo (Attività)")
         
@@ -1941,12 +1960,17 @@ def render_preventivi_page():
             </tr>
             """
         
-        # GESTIONE IMMAGINE: Se caricata usa Base64 (sicuro), altrimenti prova Link CDN (più robusto del link drive)
+        # DETERMINA SORGENTE IMMAGINE
+        img_src = ""
         if uploaded_logo:
-            img_src = get_image_base64(uploaded_logo)
-        else:
-            # Fallback: Usiamo lh3.googleusercontent.com che bypassa i blocchi di Drive solitamente
-            img_src = "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
+            # Priorità 1: Utente ha caricato manualmente un logo ora
+            img_src = get_image_base64_from_upload(uploaded_logo)
+        elif default_logo_b64:
+            # Priorità 2: Usiamo quello di default scaricato da Drive
+            img_src = default_logo_b64
+        
+        # Se img_src è vuoto (errore download e no upload), nascondiamo il tag img o usiamo placeholder
+        img_tag = f'<img src="{img_src}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;">' if img_src else ""
 
         # Costruiamo il template HTML con META CHARSET UTF-8
         raw_html = f"""
@@ -1963,7 +1987,7 @@ def render_preventivi_page():
         <div class="page">
             
             <div style="text-align: center; margin-bottom: 30px;">
-                <img src="{img_src}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
+                {img_tag}
             </div>
 
             <div style="margin-bottom: 30px;">
@@ -2123,6 +2147,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
