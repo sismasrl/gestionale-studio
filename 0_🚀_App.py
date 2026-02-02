@@ -2077,9 +2077,21 @@ def render_preventivi_page():
                 </div>
             </div>
             
-            <div style="margin-top: 40px; font-size: 8pt; color: #666; text-align: center; border-top: 1px solid #ccc; padding-top: 10px;">
-                SISMA S.R.L. - P.IVA 07028190483
+            <div style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 8pt; color: #444;">
+                <p style="text-align: center; font-weight: bold; margin: 0 0 5px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico SRL</p>
+                <div style="display: flex; justify-content: space-between;">
+                    <div style="text-align: left;">
+                        sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
+                        e-mail | PEC: info@sisma-srl.com | sisma2015@pec.cgn.it<br>
+                        web: www.sisma-srl.com
+                    </div>
+                    <div style="text-align: right;">
+                        C.F. | P.IVA: 06557660484<br>
+                        tel: +39 3381081115 | +39 3394298603
+                    </div>
+                </div>
             </div>
+
         </div>
         </body>
         </html>
@@ -2171,6 +2183,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
