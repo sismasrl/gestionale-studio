@@ -1805,6 +1805,7 @@ def render_organigramma():
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
+    import base64
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1826,6 +1827,16 @@ def render_preventivi_page():
 
     # Helper formattazione
     fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # Helper Immagine to Base64 (per incorporarla nel file)
+    def get_image_base64(uploaded_file):
+        try:
+            bytes_data = uploaded_file.getvalue()
+            b64_str = base64.b64encode(bytes_data).decode()
+            mime_type = uploaded_file.type
+            return f"data:{mime_type};base64,{b64_str}"
+        except:
+            return ""
 
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
@@ -1859,7 +1870,12 @@ def render_preventivi_page():
             indirizzo_cli = st.text_area("Indirizzo Completo Cliente (per intestazione)", placeholder="Es: Via Roma 1, 50100 Firenze (FI)")
             oggetto_prev = st.text_area("Oggetto del Preventivo", height=70)
 
-        st.markdown("### 3. Voci di Costo (Attività)")
+        # --- SEZIONE CARICAMENTO LOGO (Per risolvere il problema immagine) ---
+        st.markdown("### 3. Intestazione / Logo")
+        st.caption("Il link di Google Drive potrebbe non funzionare in tutti i browser. Per sicurezza, puoi caricare l'immagine qui sotto.")
+        uploaded_logo = st.file_uploader("Carica immagine intestazione (Opzionale)", type=['png', 'jpg', 'jpeg'])
+
+        st.markdown("### 4. Voci di Costo (Attività)")
         
         if "prev_lines" not in st.session_state:
             st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
@@ -1903,8 +1919,8 @@ def render_preventivi_page():
         
         tot_lordo = tot_netto + tot_iva
 
-        # --- 4. CONDIZIONI EDITABILI ---
-        st.markdown("### 4. Condizioni Contrattuali")
+        # --- 5. CONDIZIONI EDITABILI ---
+        st.markdown("### 5. Condizioni Contrattuali")
         col_cond1, col_cond2 = st.columns(2)
         with col_cond1:
             giorni_preavviso = st.number_input("Giorni di Preavviso Minimo", min_value=1, value=10, step=1)
@@ -1925,11 +1941,14 @@ def render_preventivi_page():
             </tr>
             """
         
-        # LINK IMMAGINE AGGIORNATO (Formato Thumbnail è più sicuro per visualizzazione diretta)
-        # Nota: L'immagine su Drive deve essere impostata come "Chiunque abbia il link può visualizzare"
-        img_url = "https://drive.google.com/thumbnail?id=1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up&sz=w1000"
+        # GESTIONE IMMAGINE: Se caricata usa Base64 (sicuro), altrimenti prova Link CDN (più robusto del link drive)
+        if uploaded_logo:
+            img_src = get_image_base64(uploaded_logo)
+        else:
+            # Fallback: Usiamo lh3.googleusercontent.com che bypassa i blocchi di Drive solitamente
+            img_src = "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
-        # Costruiamo il template HTML con META CHARSET UTF-8 per correggere gli accenti
+        # Costruiamo il template HTML con META CHARSET UTF-8
         raw_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1944,7 +1963,7 @@ def render_preventivi_page():
         <div class="page">
             
             <div style="text-align: center; margin-bottom: 30px;">
-                <img src="{img_url}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;">
+                <img src="{img_src}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
             </div>
 
             <div style="margin-bottom: 30px;">
@@ -2104,6 +2123,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
