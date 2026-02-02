@@ -1806,7 +1806,7 @@ def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
     import base64
-    import requests # Necessario per scaricare l'immagine default
+    import requests 
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1826,30 +1826,18 @@ def render_preventivi_page():
                     except: pass
         return f"{prefix_str}{max_n + 1:03d}"
 
-    # Helper formattazione
+    # Helper formattazione valuta
     fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # Helper Immagine to Base64 (da Upload)
-    def get_image_base64_from_upload(uploaded_file):
-        try:
-            bytes_data = uploaded_file.getvalue()
-            b64_str = base64.b64encode(bytes_data).decode()
-            mime_type = uploaded_file.type
-            return f"data:{mime_type};base64,{b64_str}"
-        except:
-            return ""
-
-    # Helper Immagine Default da Google Drive (Download Server-side)
-    @st.cache_data(show_spinner=False) # Cache per non scaricarla ogni volta che clicchi
+    # Helper Immagine Default da Google Drive (Download Server-side invisibile)
+    @st.cache_data(show_spinner=False) 
     def get_default_logo_base64():
-        # ID del file che mi hai fornito
         file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
                 b64_str = base64.b64encode(response.content).decode()
-                # Assumiamo sia un PNG o JPG, il browser capirà
                 return f"data:image/png;base64,{b64_str}"
         except:
             return None
@@ -1861,6 +1849,7 @@ def render_preventivi_page():
     with tab_new:
         st.info("Compila i dati per generare un preventivo su carta intestata SISMA.")
         
+        # Generazione Codice
         c_tipo, c_code = st.columns([1, 1])
         with c_tipo:
             tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA"], horizontal=True)
@@ -1870,30 +1859,49 @@ def render_preventivi_page():
 
         st.markdown("---")
         
-        # Dati Intestazione
-        c1, c2 = st.columns([1, 1])
+        # Caricamento Dati Clienti per autocompletamento
         df_cli = carica_dati("Clienti")
         nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
 
+        # --- SEZIONE 1: DATI DOCUMENTO E FIRMA ---
+        st.markdown("### 1. Dati Documento")
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown("### 1. Dati Documento")
             data_prev = st.date_input("Data Emissione", value=date.today())
-            luogo_data = st.text_input("Luogo di emissione", value="Scandicci")
-            stato_prev = st.selectbox("Stato Attuale", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
-        
         with c2:
-            st.markdown("### 2. Dati Cliente")
-            cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
-            indirizzo_cli = st.text_area("Indirizzo Completo Cliente (per intestazione)", placeholder="Es: Via Roma 1, 50100 Firenze (FI)")
-            oggetto_prev = st.text_area("Oggetto del Preventivo", height=70)
+            luogo_data = st.text_input("Luogo", value="Scandicci")
+        with c3:
+            stato_prev = st.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
+        with c4:
+            # Selezione Socio per la firma
+            soci_list = ["Arch. PhD Andrea Lumini", "Arch. Socio Tizio", "Arch. Socio Caio"] # Personalizza questa lista
+            socio_firma = st.selectbox("Socio Firmatario", soci_list, index=0)
 
-        # --- SEZIONE LOGO (Gestione Default + Override) ---
-        st.markdown("### 3. Intestazione")
-        # Scarichiamo il logo di default (una volta sola grazie alla cache)
-        default_logo_b64 = get_default_logo_base64()
+        # --- SEZIONE 2: CLIENTE (Autocompletamento Indirizzo) ---
+        st.markdown("### 2. Dati Cliente")
+        cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         
-        uploaded_logo = st.file_uploader("Il logo è impostato di default. Carica qui solo se vuoi cambiarlo per questo specifico preventivo:", type=['png', 'jpg', 'jpeg'])
+        # Logica per trovare l'indirizzo automaticamente
+        indirizzo_trovato = ""
+        if cli_sel and not df_cli.empty:
+            row_cli = df_cli[df_cli["Denominazione"] == cli_sel]
+            if not row_cli.empty:
+                # Cerca colonne comuni per l'indirizzo
+                for col_name in ["Sede", "Indirizzo", "Sede Legale"]:
+                    if col_name in row_cli.columns:
+                        val = str(row_cli.iloc[0][col_name])
+                        if val and val != "nan":
+                            indirizzo_trovato = val
+                            break
+        
+        # Mostra l'indirizzo trovato (modificabile)
+        indirizzo_cli = st.text_area("Indirizzo Completo (Autocompilato)", value=indirizzo_trovato, height=68)
 
+        # --- SEZIONE 3: OGGETTO (Tutta larghezza) ---
+        st.markdown("### 3. Oggetto del Preventivo")
+        oggetto_prev = st.text_area("Inserisci l'oggetto del preventivo", height=70, label_visibility="collapsed", placeholder="Es. Rilievo architettonico immobile via Roma...")
+
+        # --- SEZIONE 4: VOCI DI COSTO ---
         st.markdown("### 4. Voci di Costo (Attività)")
         
         if "prev_lines" not in st.session_state:
@@ -1914,7 +1922,7 @@ def render_preventivi_page():
             key=f"editor_prev_{tipo_prev}"
         )
 
-        # Calcoli
+        # Calcoli totali
         tot_netto = 0.0
         tot_iva = 0.0
         dettagli_list = []
@@ -1938,7 +1946,7 @@ def render_preventivi_page():
         
         tot_lordo = tot_netto + tot_iva
 
-        # --- 5. CONDIZIONI EDITABILI ---
+        # --- SEZIONE 5: CONDIZIONI ---
         st.markdown("### 5. Condizioni Contrattuali")
         col_cond1, col_cond2 = st.columns(2)
         with col_cond1:
@@ -1946,11 +1954,11 @@ def render_preventivi_page():
         with col_cond2:
             perc_anticipo = st.number_input("Percentuale Anticipo (%)", min_value=0, max_value=100, value=15, step=5)
         
-        # Convertiamo la data in formato italiano testuale per l'intestazione
+        # --- PREPARAZIONE HTML ---
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
 
-        # --- GENERAZIONE HTML (TEMPLATE WORD SISMA) ---
+        # Righe tabella
         righe_html = ""
         for item in dettagli_list:
             righe_html += f"""
@@ -1960,19 +1968,12 @@ def render_preventivi_page():
             </tr>
             """
         
-        # DETERMINA SORGENTE IMMAGINE
-        img_src = ""
-        if uploaded_logo:
-            # Priorità 1: Utente ha caricato manualmente un logo ora
-            img_src = get_image_base64_from_upload(uploaded_logo)
-        elif default_logo_b64:
-            # Priorità 2: Usiamo quello di default scaricato da Drive
-            img_src = default_logo_b64
-        
-        # Se img_src è vuoto (errore download e no upload), nascondiamo il tag img o usiamo placeholder
-        img_tag = f'<img src="{img_src}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;">' if img_src else ""
+        # Recupero logo (silenzioso)
+        img_src = get_default_logo_base64()
+        # Fallback se download fallisce
+        if not img_src: img_src = "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
-        # Costruiamo il template HTML con META CHARSET UTF-8
+        # HTML COMPLETO
         raw_html = f"""
         <!DOCTYPE html>
         <html>
@@ -1987,11 +1988,13 @@ def render_preventivi_page():
         <div class="page">
             
             <div style="text-align: center; margin-bottom: 30px;">
-                {img_tag}
+                <img src="{img_src}" alt="Intestazione SISMA" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
             </div>
 
             <div style="margin-bottom: 30px;">
-                <p style="font-weight: bold; font-size: 12pt; margin-bottom: 5px;">Preventivo n. {new_code}</p>
+                <div style="text-align: right; margin-bottom: 10px;">
+                    <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
+                </div>
                 
                 <div style="text-align: right; margin-top: 20px;">
                     <p style="margin: 0; font-weight: bold;">Spett.le {cli_sel if cli_sel else "...................."}</p>
@@ -2044,7 +2047,7 @@ def render_preventivi_page():
             <div style="margin-top: 50px; display: flex; justify-content: space-between;">
                 <div style="width: 45%;">
                     <p style="margin-bottom: 50px;"><b>Per Sisma SRL</b><br>In fede,</p>
-                    <p><b>Arch. PhD Andrea Lumini</b></p>
+                    <p><b>{socio_firma}</b></p>
                 </div>
                 <div style="width: 45%; text-align: right;">
                     <p style="margin-bottom: 50px;"><b>Per accettazione</b></p>
@@ -2147,6 +2150,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
