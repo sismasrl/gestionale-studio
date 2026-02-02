@@ -1865,17 +1865,32 @@ def render_preventivi_page():
 
         # --- SEZIONE 1: DATI DOCUMENTO E FIRMA ---
         st.markdown("### 1. Dati Documento")
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             data_prev = st.date_input("Data Emissione", value=date.today())
         with c2:
             luogo_data = st.text_input("Luogo", value="Scandicci")
         with c3:
             stato_prev = st.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
-        with c4:
-            # Selezione Socio per la firma
-            soci_list = ["Arch. PhD Andrea Lumini", "Arch. Socio Tizio", "Arch. Socio Caio"] # Personalizza questa lista
-            socio_firma = st.selectbox("Socio Firmatario", soci_list, index=0)
+        
+        st.markdown("**Firma Socio:**")
+        c_soc1, c_soc2 = st.columns([1, 3])
+        with c_soc1:
+            titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
+        with c_soc2:
+            # Lista dei 7 Soci (Personalizza qui i nomi se vuoi che siano fissi)
+            soci_list = [
+                "Andrea Lumini", 
+                "Socio 2", 
+                "Socio 3", 
+                "Socio 4", 
+                "Socio 5", 
+                "Socio 6", 
+                "Socio 7"
+            ]
+            socio_nome = st.selectbox("Socio Firmatario", soci_list, index=0)
+        
+        socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
         # --- SEZIONE 2: CLIENTE (Autocompletamento Indirizzo) ---
         st.markdown("### 2. Dati Cliente")
@@ -1886,7 +1901,6 @@ def render_preventivi_page():
         if cli_sel and not df_cli.empty:
             row_cli = df_cli[df_cli["Denominazione"] == cli_sel]
             if not row_cli.empty:
-                # Cerca colonne comuni per l'indirizzo
                 for col_name in ["Sede", "Indirizzo", "Sede Legale"]:
                     if col_name in row_cli.columns:
                         val = str(row_cli.iloc[0][col_name])
@@ -1894,7 +1908,6 @@ def render_preventivi_page():
                             indirizzo_trovato = val
                             break
         
-        # Mostra l'indirizzo trovato (modificabile)
         indirizzo_cli = st.text_area("Indirizzo Completo (Autocompilato)", value=indirizzo_trovato, height=68)
 
         # --- SEZIONE 3: OGGETTO (Tutta larghezza) ---
@@ -1958,6 +1971,9 @@ def render_preventivi_page():
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
 
+        # Formattazione Cliente (Iniziali Maiuscole)
+        nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
+
         # Righe tabella
         righe_html = ""
         for item in dettagli_list:
@@ -1968,9 +1984,8 @@ def render_preventivi_page():
             </tr>
             """
         
-        # Recupero logo (silenzioso)
+        # Recupero logo
         img_src = get_default_logo_base64()
-        # Fallback se download fallisce
         if not img_src: img_src = "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
         # HTML COMPLETO
@@ -1997,18 +2012,18 @@ def render_preventivi_page():
                 </div>
                 
                 <div style="text-align: right; margin-top: 20px;">
-                    <p style="margin: 0; font-weight: bold;">Spett.le {cli_sel if cli_sel else "...................."}</p>
+                    <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
                     <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
                 </div>
                 
-                <p style="margin-top: 20px; text-align: right;">{data_str}</p>
+                <p style="margin-top: 40px; margin-bottom: 10px; text-align: left;">{data_str}</p>
             </div>
 
             <div style="margin-bottom: 20px;">
-                <p><b>Oggetto:</b> {oggetto_prev if oggetto_prev else "...................."}</p>
+                <p><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
             </div>
 
-            <p>Spett.le {cli_sel if cli_sel else "Cliente"},</p>
+            <p>Spett.le {nome_cliente_fmt},</p>
             <p>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
@@ -2023,8 +2038,12 @@ def render_preventivi_page():
                 </tbody>
                 <tfoot>
                     <tr style="font-weight: bold; border-top: 2px solid black;">
-                        <td style="padding: 10px; text-align: right;">TOTALE (Imponibile)</td>
+                        <td style="padding: 10px; text-align: right;">TOTALE (Netto)</td>
                         <td style="padding: 10px; text-align: right;">{fmt(tot_netto)}</td>
+                    </tr>
+                    <tr style="font-weight: bold;">
+                        <td style="padding: 10px; text-align: right;">TOTALE (Lordo)</td>
+                        <td style="padding: 10px; text-align: right;">{fmt(tot_lordo)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -2044,15 +2063,17 @@ def render_preventivi_page():
                 <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
             </div>
 
-            <div style="margin-top: 50px; display: flex; justify-content: space-between;">
+            <div style="margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end;">
                 <div style="width: 45%;">
-                    <p style="margin-bottom: 50px;"><b>Per Sisma SRL</b><br>In fede,</p>
-                    <p><b>{socio_firma}</b></p>
+                    <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
+                    <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
                 </div>
                 <div style="width: 45%; text-align: right;">
-                    <p style="margin-bottom: 50px;"><b>Per accettazione</b></p>
-                    <p>Data: ..............................</p>
-                    <p>Firma: ..............................</p>
+                    <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
+                    <div style="margin: 0;">
+                         <span style="margin-right: 10px;">Data: ....................</span>
+                         <span>Firma: ....................</span>
+                    </div>
                 </div>
             </div>
             
@@ -2150,6 +2171,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
