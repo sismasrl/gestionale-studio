@@ -1801,7 +1801,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
 
-# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+# --- # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1829,7 +1829,7 @@ def render_preventivi_page():
     # Helper formattazione valuta
     fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # Helper Immagine Default da Google Drive (Download Server-side invisibile)
+    # Helper Immagine Default da Google Drive
     @st.cache_data(show_spinner=False) 
     def get_default_logo_base64():
         file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
@@ -1859,7 +1859,7 @@ def render_preventivi_page():
 
         st.markdown("---")
         
-        # Caricamento Dati Clienti per autocompletamento
+        # Caricamento Dati Clienti
         df_cli = carica_dati("Clienti")
         nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
 
@@ -1875,28 +1875,33 @@ def render_preventivi_page():
         
         st.markdown("**Firma Socio:**")
         c_soc1, c_soc2 = st.columns([1, 3])
+        
+        # DEFINIZIONE SOCI E NUMERI DI TELEFONO
+        soci_data = {
+            "Andrea Arrighetti": "+39 3394298603",
+            "Stefano Bertocci": "+39 3357033807",
+            "Andrea Lumini": "+39 3381081115",
+            "Lorenzo Marasco": "+39 3316458378",
+            "Giovanni Minutoli": "+39 3385854417",
+            "Marco Repole": "+39 3478835285",
+            "Giovanni Pancani": "+39 3355719188"
+        }
+        
         with c_soc1:
             titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
         with c_soc2:
-            # Lista dei 7 Soci (Personalizza qui i nomi se vuoi che siano fissi)
-            soci_list = [
-                "Andrea Lumini", 
-                "Socio 2", 
-                "Socio 3", 
-                "Socio 4", 
-                "Socio 5", 
-                "Socio 6", 
-                "Socio 7"
-            ]
-            socio_nome = st.selectbox("Socio Firmatario", soci_list, index=0)
+            # Ordiniamo la lista per nome
+            lista_nomi_soci = sorted(list(soci_data.keys()))
+            socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=lista_nomi_soci.index("Andrea Lumini") if "Andrea Lumini" in lista_nomi_soci else 0)
         
+        # Recupero dati per firma
+        socio_tel = soci_data.get(socio_nome, "")
         socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
-        # --- SEZIONE 2: CLIENTE (Autocompletamento Indirizzo) ---
+        # --- SEZIONE 2: CLIENTE ---
         st.markdown("### 2. Dati Cliente")
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         
-        # Logica per trovare l'indirizzo automaticamente
         indirizzo_trovato = ""
         if cli_sel and not df_cli.empty:
             row_cli = df_cli[df_cli["Denominazione"] == cli_sel]
@@ -1910,7 +1915,7 @@ def render_preventivi_page():
         
         indirizzo_cli = st.text_area("Indirizzo Completo (Autocompilato)", value=indirizzo_trovato, height=68)
 
-        # --- SEZIONE 3: OGGETTO (Tutta larghezza) ---
+        # --- SEZIONE 3: OGGETTO ---
         st.markdown("### 3. Oggetto del Preventivo")
         oggetto_prev = st.text_area("Inserisci l'oggetto del preventivo", height=70, label_visibility="collapsed", placeholder="Es. Rilievo architettonico immobile via Roma...")
 
@@ -1970,8 +1975,6 @@ def render_preventivi_page():
         # --- PREPARAZIONE HTML ---
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
-
-        # Formattazione Cliente (Iniziali Maiuscole)
         nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
 
         # Righe tabella
@@ -1995,7 +1998,8 @@ def render_preventivi_page():
         <head>
             <meta charset="utf-8">
             <style>
-                body {{ font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
+                /* MODIFICA FONT: Calibri, Dimensione 11pt */
+                body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
                 .page {{ max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
             </style>
         </head>
@@ -2067,6 +2071,7 @@ def render_preventivi_page():
                 <div style="width: 45%;">
                     <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
                     <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
+                    <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
                 </div>
                 <div style="width: 45%; text-align: right;">
                     <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
@@ -2183,6 +2188,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
