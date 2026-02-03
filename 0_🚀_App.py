@@ -1791,6 +1791,15 @@ def render_organigramma():
             <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">RILIEVO DIGITALE & BIM</div>
             <div class="name-text">ANDREA LUMINI</div>
         </div>
+        """, unsafe_allow_html=True)
+    with c4: 
+        st.markdown("""
+        <div class="org-card" style="min-height: 200px;">
+            <span class="role-label">PROJECT MANAGER</span>
+            <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">RILIEVO DIGITALE & 3D</div>
+            <div class="name-text">MARCO REPOLE</div>
+        </div>
+        """, unsafe_allow_html=True)
         
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
@@ -2205,6 +2214,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
