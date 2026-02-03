@@ -1798,6 +1798,12 @@ def render_preventivi_page():
     import streamlit.components.v1 as components
     import base64
     import requests 
+    import json# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+def render_preventivi_page():
+    import textwrap
+    import streamlit.components.v1 as components
+    import base64
+    import requests 
     import json
     import time
     from datetime import date
@@ -1806,12 +1812,13 @@ def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS (Separata per evitare errori) ===
-    # Nota: Qui usiamo solo stringhe normali, niente f-string.
-    CSS_STYLE = """
-        body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }
-        .page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    """
+    # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
+    # Usiamo join per evitare errori con le virgolette triple e i caratteri speciali
+    css_lines = [
+        "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
+        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
+    ]
+    CSS_STYLE = "\n".join(css_lines)
 
     # --- HELPER: CONVERSIONE NUMERO IN LETTERE ---
     def numero_a_lettere(n):
@@ -2047,7 +2054,6 @@ def render_preventivi_page():
         img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
         # COSTRUZIONE HTML SICURA
-        # Inseriamo CSS_STYLE come variabile. Nessuna parentesi graffa doppia nel resto del codice.
         raw_html = f"""
         <!DOCTYPE html>
         <html>
@@ -2203,6 +2209,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
