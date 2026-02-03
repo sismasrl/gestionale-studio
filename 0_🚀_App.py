@@ -1790,7 +1790,9 @@ def render_organigramma():
             <span class="role-label">PROJECT MANAGER</span>
             <div class="card-subtitle" style="margin: 5px 0; font-size: 14px;">RILIEVO DIGITALE & BIM</div>
             <div class="name-text">ANDREA LUMINI</div>
-        </div># --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+        </div>
+        
+# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -2201,6 +2203,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
