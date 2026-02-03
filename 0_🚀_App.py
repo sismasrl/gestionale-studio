@@ -1803,6 +1803,8 @@ def render_organigramma():
 
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
+    import textwrap# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
     import base64
@@ -1814,6 +1816,63 @@ def render_preventivi_page():
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
+
+    # --- HELPER: CONVERSIONE NUMERO IN LETTERE (ITALIANO) ---
+    def numero_a_lettere(n):
+        if n == 0: return "zero"
+        
+        numeri = {
+            1: "uno", 2: "due", 3: "tre", 4: "quattro", 5: "cinque", 
+            6: "sei", 7: "sette", 8: "otto", 9: "nove", 10: "dieci", 
+            11: "undici", 12: "dodici", 13: "tredici", 14: "quattordici", 
+            15: "quindici", 16: "sedici", 17: "diciassette", 18: "diciotto", 
+            19: "diciannove", 20: "venti", 30: "trenta", 40: "quaranta", 
+            50: "cinquanta", 60: "sessanta", 70: "settanta", 80: "ottanta", 
+            90: "novanta"
+        }
+        
+        def converti_centinaia(num):
+            if num < 20: return numeri[num]
+            if num < 100:
+                decina = (num // 10) * 10
+                unita = num % 10
+                ris = numeri[decina]
+                if unita != 0:
+                    if unita == 1 or unita == 8: ris = ris[:-1] # elisione (ventuno, ventotto)
+                    ris += numeri[unita]
+                return ris
+            if num < 1000:
+                cent = num // 100
+                resto = num % 100
+                ris = "cento"
+                if cent > 1: ris = numeri[cent] + ris
+                if resto != 0: ris += converti_centinaia(resto)
+                return ris
+            return ""
+
+        def converti_mille(num):
+            if num < 1000: return converti_centinaia(num)
+            k = num // 1000
+            resto = num % 1000
+            ris = "mille"
+            if k > 1: ris = converti_centinaia(k) + "mila"
+            if resto != 0: ris += converti_centinaia(resto)
+            return ris
+            
+        # Supporto semplificato fino a 999.999 per brevità
+        # Se servono milioni, la logica è simile estendendo la funzione
+        try:
+            intero = int(n)
+            return converti_mille(intero)
+        except:
+            return str(n)
+
+    def formatta_prezzo_testuale(valore):
+        # Es: 30000.50 -> "trentamila/50"
+        intero = int(valore)
+        decimali = int(round((valore - intero) * 100))
+        testo_intero = numero_a_lettere(intero)
+        return f"{testo_intero}/{decimali:02d}"
 
     # Helper per ID univoco
     def get_next_prev_id(tipo):
@@ -1830,8 +1889,8 @@ def render_preventivi_page():
                     except: pass
         return f"{prefix_str}{max_n + 1:03d}"
 
-    # Helper formattazione valuta
-    fmt = lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    # Helper formattazione valuta numerica (30.000,00 €)
+    fmt_num = lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
     # Helper Immagine Default da Google Drive
     @st.cache_data(show_spinner=False) 
@@ -1880,7 +1939,6 @@ def render_preventivi_page():
         st.markdown("**Firma Socio:**")
         c_soc1, c_soc2 = st.columns([1, 3])
         
-        # DEFINIZIONE SOCI E NUMERI DI TELEFONO
         soci_data = {
             "Andrea Arrighetti": "+39 3394298603",
             "Stefano Bertocci": "+39 3357033807",
@@ -1903,7 +1961,6 @@ def render_preventivi_page():
         # --- SEZIONE 2: CLIENTE ---
         st.markdown("### 2. Dati Cliente")
         
-        # === NUOVO: AGGIUNTA CLIENTE RAPIDA ===
         with st.expander("➕ Non trovi il cliente? Aggiungilo qui"):
             with st.form("form_add_cli"):
                 new_cli_den = st.text_input("Denominazione (Obbligatorio)")
@@ -1912,7 +1969,6 @@ def render_preventivi_page():
                 new_cli_email = st.text_input("Email / PEC")
                 if st.form_submit_button("Salva Nuovo Cliente"):
                     if new_cli_den:
-                        # Creiamo il record compatibile con il foglio Clienti
                         nuovo_record = {
                             "Denominazione": new_cli_den,
                             "Sede": new_cli_sede,
@@ -1925,7 +1981,6 @@ def render_preventivi_page():
                         st.rerun()
                     else:
                         st.error("Inserisci almeno la Denominazione.")
-        # ======================================
 
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         
@@ -1948,15 +2003,15 @@ def render_preventivi_page():
 
         # --- SEZIONE 4: VOCI DI COSTO ---
         st.markdown("### 4. Voci di Costo (Attività)")
+        st.info("💡 Inserisci qui sotto il titolo dell'attività e usa la colonna 'Descrizione Estesa' per il dettaglio lungo.")
         
         if "prev_lines" not in st.session_state:
-            st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
+            st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
 
         col_config = {
-            "Descrizione": st.column_config.TextColumn("Descrizione Attività", width="large", required=True),
-            "Qta": st.column_config.NumberColumn("Q.tà", min_value=0.0, step=0.1, format="%.1f"),
-            "Prezzo Unitario": st.column_config.NumberColumn("Prezzo Unit. €", min_value=0.0, step=10.0, format="%.2f"),
-            "IVA %": st.column_config.SelectboxColumn("IVA %", options=[0, 4, 5, 10, 22], required=True)
+            "Titolo Attività": st.column_config.TextColumn("Titolo (es. Acquisizione dati)", width="medium", required=True),
+            "Descrizione Estesa": st.column_config.TextColumn("Descrizione Dettagliata", width="large"),
+            "Prezzo Totale": st.column_config.NumberColumn("Prezzo Totale €", min_value=0.0, step=50.0, format="%.2f"),
         }
 
         edited_df = st.data_editor(
@@ -1969,28 +2024,23 @@ def render_preventivi_page():
 
         # Calcoli totali
         tot_netto = 0.0
-        tot_iva = 0.0
         dettagli_list = []
 
         for idx, row in edited_df.iterrows():
             try:
-                d = str(row.get("Descrizione", ""))
-                if d.strip():
-                    q = float(row.get("Qta", 0))
-                    p = float(row.get("Prezzo Unitario", 0))
-                    iva_p = int(row.get("IVA %", 22))
-                    parziale = q * p
-                    val_iva = parziale * (iva_p / 100)
-                    tot_netto += parziale
-                    tot_iva += val_iva
+                tit = str(row.get("Titolo Attività", ""))
+                desc = str(row.get("Descrizione Estesa", ""))
+                p = float(row.get("Prezzo Totale", 0))
+                
+                if tit.strip():
+                    tot_netto += p
                     dettagli_list.append({
-                        "desc": d, "qta": q, "prezzo": p, "iva_p": iva_p, 
-                        "parziale": parziale, "val_iva": val_iva
+                        "titolo": tit,
+                        "descrizione": desc,
+                        "prezzo": p
                     })
             except: pass
         
-        tot_lordo = tot_netto + tot_iva
-
         # --- SEZIONE 5: CONDIZIONI ---
         st.markdown("### 5. Condizioni Contrattuali")
         col_cond1, col_cond2 = st.columns(2)
@@ -2004,15 +2054,25 @@ def render_preventivi_page():
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
         nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
 
-        # Righe tabella
-        righe_html = ""
-        for item in dettagli_list:
-            righe_html += f"""
-            <tr style="border-bottom: 1px solid #ddd;">
-                <td style="padding: 10px; text-align: left; vertical-align: top;">{item['desc']}</td>
-                <td style="padding: 10px; text-align: right; vertical-align: top; white-space: nowrap;">{fmt(item['parziale'])}</td>
-            </tr>
+        # COSTRUZIONE ELENCO ATTIVITÀ (NO TABELLA)
+        html_elenco = ""
+        for i, item in enumerate(dettagli_list, 1):
+            prezzo_num = fmt_num(item['prezzo'])
+            prezzo_text = formatta_prezzo_testuale(item['prezzo'])
+            
+            html_elenco += f"""
+            <div style="margin-bottom: 25px;">
+                <p style="margin: 0; font-size: 11pt;"><b>{i}. {item['titolo']}</b></p>
+                <p style="margin-top: 5px; margin-bottom: 5px; text-align: justify; line-height: 1.4;">
+                    {item['descrizione']}
+                </p>
+                <p style="margin: 0; font-weight: bold;">Costo: {prezzo_num} ({prezzo_text} euro)</p>
+            </div>
             """
+
+        # Totale Complessivo
+        totale_num = fmt_num(tot_netto)
+        totale_text = formatta_prezzo_testuale(tot_netto)
         
         # Recupero logo
         img_src = get_default_logo_base64()
@@ -2025,7 +2085,6 @@ def render_preventivi_page():
         <head>
             <meta charset="utf-8">
             <style>
-                /* MODIFICA FONT: Calibri, Dimensione 11pt */
                 body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
                 .page {{ max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
             </style>
@@ -2057,23 +2116,13 @@ def render_preventivi_page():
             <p>Spett.le {nome_cliente_fmt},</p>
             <p>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
 
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
-                <thead>
-                    <tr style="border-bottom: 2px solid black;">
-                        <th style="text-align: left; padding: 5px;">Descrizione Attività</th>
-                        <th style="text-align: right; padding: 5px; width: 120px;">Importo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {righe_html}
-                </tbody>
-                <tfoot>
-                    <tr style="font-weight: bold; border-top: 2px solid black;">
-                        <td style="padding: 10px; text-align: right;">TOTALE (Netto)</td>
-                        <td style="padding: 10px; text-align: right;">{fmt(tot_netto)}</td>
-                    </tr>
-                    </tfoot>
-            </table>
+            <div style="margin-top: 30px; margin-bottom: 30px;">
+                {html_elenco}
+            </div>
+
+            <div style="margin-bottom: 30px;">
+                <p>Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
+            </div>
 
             <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
                 <p><b>Note e Condizioni:</b></p>
@@ -2147,12 +2196,13 @@ def render_preventivi_page():
                         "Cliente": cli_sel,
                         "Oggetto": oggetto_prev,
                         "Totale Netto": tot_netto,
-                        "Totale Lordo": tot_lordo,
+                        "Totale Lordo": tot_netto, # Lordo = Netto qui, non usiamo IVA nel calcolo totale finale
                         "Stato": stato_prev,
                         "Dati_JSON": json.dumps(dettagli_list)
                     }
                     salva_record(record, "Preventivi", "Codice", "new")
-                    st.session_state["prev_lines"] = pd.DataFrame([{"Descrizione": "", "Qta": 1.0, "Prezzo Unitario": 0.0, "IVA %": 22}])
+                    # Reset
+                    st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
                     st.success(f"Preventivo {new_code} salvato!")
                     time.sleep(1.5)
                     st.rerun()
@@ -2210,6 +2260,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
