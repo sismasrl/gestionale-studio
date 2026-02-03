@@ -1794,11 +1794,7 @@ def render_organigramma():
         
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
-    import textwrap
-    import streamlit.components.v1 as components
-    import base64
-    import requests 
-    import json# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+    import textwrap# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1812,8 +1808,7 @@ def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
-    # Usiamo join per evitare errori con le virgolette triple e i caratteri speciali
+    # === DEFINIZIONE STILE CSS (Metodo Sicuro senza f-string) ===
     css_lines = [
         "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
         ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
@@ -2054,6 +2049,7 @@ def render_preventivi_page():
         img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
         # COSTRUZIONE HTML SICURA
+        # Nota: Ho aggiunto backslash (\) davanti a tutti gli apostrofi nel testo per evitare errori di sintassi.
         raw_html = f"""
         <!DOCTYPE html>
         <html>
@@ -2094,13 +2090,13 @@ def render_preventivi_page():
             <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
                 <p><b>Note e Condizioni:</b></p>
                 <ul style="padding-left: 20px; margin: 0;">
-                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l'aliquota prevista dalla legge alla data della fatturazione.</li>
-                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d’opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
+                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l\'aliquota prevista dalla legge alla data della fatturazione.</li>
+                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d\'opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
                     <li style="margin-bottom: 5px;">Nel presente preventivo non sono altresì conteggiate eventuali opere provvisionali che si rendessero necessarie per la realizzazione del rilievo. Qualora se ne dovesse riscontrare la necessità tali opere dovranno essere contabilizzate a parte o realizzate direttamente dalla Committenza.</li>
-                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all’esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
+                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all\'esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
                     <li style="margin-bottom: 5px;">Per ottimizzare le tempistiche previste per le varie attività si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito di studio e degli ambienti interni.</li>
                     <li style="margin-bottom: 5px;">Qualora venga accettato, il presente preventivo, dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
-                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell’anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
+                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell\'anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
                     <li>La Società SISMA srl, qualora venisse incaricata per i sopracitati servizi, si riserverà il diritto di utilizzare gli elaborati digitali sviluppati nel corso del progetto per scopi autopromozionali, fatti ovviamente salvo i diritti della Proprietà del Bene.</li>
                 </ul>
                 <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
@@ -2209,6 +2205,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
