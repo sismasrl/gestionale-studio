@@ -1807,6 +1807,10 @@ def render_preventivi_page():
     import streamlit.components.v1 as components
     import base64
     import requests 
+    import json
+    import time
+    from datetime import date
+    import pandas as pd
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1890,16 +1894,39 @@ def render_preventivi_page():
         with c_soc1:
             titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
         with c_soc2:
-            # Ordiniamo la lista per nome
             lista_nomi_soci = sorted(list(soci_data.keys()))
             socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=lista_nomi_soci.index("Andrea Lumini") if "Andrea Lumini" in lista_nomi_soci else 0)
         
-        # Recupero dati per firma
         socio_tel = soci_data.get(socio_nome, "")
         socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
         # --- SEZIONE 2: CLIENTE ---
         st.markdown("### 2. Dati Cliente")
+        
+        # === NUOVO: AGGIUNTA CLIENTE RAPIDA ===
+        with st.expander("➕ Non trovi il cliente? Aggiungilo qui"):
+            with st.form("form_add_cli"):
+                new_cli_den = st.text_input("Denominazione (Obbligatorio)")
+                new_cli_sede = st.text_area("Indirizzo Sede")
+                new_cli_piva = st.text_input("P.IVA / C.F.")
+                new_cli_email = st.text_input("Email / PEC")
+                if st.form_submit_button("Salva Nuovo Cliente"):
+                    if new_cli_den:
+                        # Creiamo il record compatibile con il foglio Clienti
+                        nuovo_record = {
+                            "Denominazione": new_cli_den,
+                            "Sede": new_cli_sede,
+                            "P.IVA": new_cli_piva,
+                            "Email": new_cli_email
+                        }
+                        salva_record(nuovo_record, "Clienti", "Denominazione", "new")
+                        st.success(f"Cliente '{new_cli_den}' aggiunto! La pagina si ricaricherà...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Inserisci almeno la Denominazione.")
+        # ======================================
+
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         
         indirizzo_trovato = ""
@@ -2045,11 +2072,7 @@ def render_preventivi_page():
                         <td style="padding: 10px; text-align: right;">TOTALE (Netto)</td>
                         <td style="padding: 10px; text-align: right;">{fmt(tot_netto)}</td>
                     </tr>
-                    <tr style="font-weight: bold;">
-                        <td style="padding: 10px; text-align: right;">TOTALE (Lordo)</td>
-                        <td style="padding: 10px; text-align: right;">{fmt(tot_lordo)}</td>
-                    </tr>
-                </tfoot>
+                    </tfoot>
             </table>
 
             <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
@@ -2187,6 +2210,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
