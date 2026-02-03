@@ -1801,7 +1801,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
 
-# --- # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -2082,17 +2082,16 @@ def render_preventivi_page():
                 </div>
             </div>
             
-            <div style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 8pt; color: #444;">
-                <p style="text-align: center; font-weight: bold; margin: 0 0 5px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico SRL</p>
+            <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
+                <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
                 <div style="display: flex; justify-content: space-between;">
                     <div style="text-align: left;">
-                        sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
-                        e-mail | PEC: info@sisma-srl.com | sisma2015@pec.cgn.it<br>
-                        web: www.sisma-srl.com
+                        <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
+                        <b>C.F. | P.IVA:</b> 06557660484
                     </div>
                     <div style="text-align: right;">
-                        C.F. | P.IVA: 06557660484<br>
-                        tel: +39 3381081115 | +39 3394298603
+                        <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
+                        <b>website:</b> www.sisma-srl.com
                     </div>
                 </div>
             </div>
@@ -2188,6 +2187,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
