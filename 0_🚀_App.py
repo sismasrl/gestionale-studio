@@ -1793,7 +1793,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
     with c4: 
-        st.markdown("""# 
+        st.markdown("""
         
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
@@ -2250,6 +2250,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
