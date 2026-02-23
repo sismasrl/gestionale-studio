@@ -1815,16 +1815,6 @@ def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
-    # Aggiunto layout specifico @page per istruire Word a creare i margini corretti
-    css_lines = [
-        "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
-        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }",
-        "@page WordSection1 { size: 21.0cm 29.7cm; margin: 2.0cm 2.0cm 2.0cm 2.0cm; mso-header-margin: 1.0cm; mso-footer-margin: 1.0cm; mso-header: h1; mso-footer: f1; }",
-        "div.WordSection1 { page: WordSection1; }"
-    ]
-    CSS_STYLE = " ".join(css_lines)
-
     # --- HELPER: CONVERSIONE NUMERO IN LETTERE ---
     def numero_a_lettere(n):
         if n == 0: return "zero"
@@ -1877,7 +1867,7 @@ def render_preventivi_page():
         testo_intero = numero_a_lettere(intero)
         return f"{testo_intero}/{decimali:02d}"
 
-    # Helper per ID univoco (AGGIUNTO INTEGRATO)
+    # Helper per ID univoco (Aggiunto INTEGRATO)
     def get_next_prev_id(tipo):
         prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC", "INTEGRATO": "PR-INT"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
@@ -1998,7 +1988,7 @@ def render_preventivi_page():
         st.markdown("### 4. Voci di Costo (Attività)")
         st.info("💡 Inserisci qui sotto il titolo dell'attività e usa la colonna 'Descrizione Estesa' per il dettaglio lungo.")
         
-        # FIX: Reset automatico se la tabella ha colonne vecchie
+        # FIX: Reset automatico tabella
         if "prev_lines" not in st.session_state or "Descrizione Estesa" not in st.session_state["prev_lines"].columns:
             st.session_state["prev_lines"] = pd.DataFrame([
                 {"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}
@@ -2015,7 +2005,7 @@ def render_preventivi_page():
             num_rows="dynamic",
             column_config=col_config,
             use_container_width=True,
-            key=f"editor_prev_{tipo_prev}_v4" 
+            key=f"editor_prev_{tipo_prev}_v5"
         )
 
         tot_netto = 0.0
@@ -2037,7 +2027,7 @@ def render_preventivi_page():
         with col_cond2:
             perc_anticipo = st.number_input("Percentuale Anticipo (%)", min_value=0, max_value=100, value=15, step=5)
         
-        # --- GENERAZIONE HTML ---
+        # --- GENERAZIONE COMPONENTI HTML (COMUNI) ---
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
         nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
@@ -2058,98 +2048,196 @@ def render_preventivi_page():
         totale_text = formatta_prezzo_testuale(tot_netto)
         img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
-        # COSTRUZIONE HTML SICURA CON METADATI WORD (MsoElement)
-        raw_html = f"""
-        <!DOCTYPE html>
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-            <meta charset="utf-8">
-            <style>
-                {CSS_STYLE}
-            </style>
-            </head>
-        <body>
-        <div class="page WordSection1">
-
-            <div style="text-align: center; margin-bottom: 30px;">
-                <img src="{img_src}" width="250" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
-            </div>
-            <div style="margin-bottom: 30px;">
-                <div style="text-align: right; margin-bottom: 10px;">
-                    <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
-                </div>
-                <div style="text-align: right; margin-top: 20px;">
-                    <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
-                    <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
-                </div>
-                <p style="margin-top: 40px; margin-bottom: 10px; text-align: left;">{data_str}</p>
-            </div>
-            <div style="margin-bottom: 20px;">
-                <p><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
-            </div>
-            <p>Spett.le {nome_cliente_fmt},</p>
-            <p>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
-            
-            <div style="margin-top: 30px; margin-bottom: 30px;">
-                {html_elenco}
-            </div>
-            <div style="margin-bottom: 30px;">
-                <p>Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
-            </div>
-
+        testo_condizioni = f"""
             <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
-                <p><b>Note e Condizioni:</b></p>
-                <ul style="padding-left: 20px; margin: 0;">
-                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l\'aliquota prevista dalla legge alla data della fatturazione.</li>
-                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d\'opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
+                <p style="margin-bottom: 5px;"><b>Note e Condizioni:</b></p>
+                <ul style="padding-left: 20px; margin-top: 0; margin-bottom: 0;">
+                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l'aliquota prevista dalla legge alla data della fatturazione.</li>
+                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d'opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
                     <li style="margin-bottom: 5px;">Nel presente preventivo non sono altresì conteggiate eventuali opere provvisionali che si rendessero necessarie per la realizzazione del rilievo. Qualora se ne dovesse riscontrare la necessità tali opere dovranno essere contabilizzate a parte o realizzate direttamente dalla Committenza.</li>
-                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all\'esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
+                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all'esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
                     <li style="margin-bottom: 5px;">Per ottimizzare le tempistiche previste per le varie attività si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito di studio e degli ambienti interni.</li>
                     <li style="margin-bottom: 5px;">Qualora venga accettato, il presente preventivo, dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
-                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell\'anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
+                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell'anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
                     <li>La Società SISMA srl, qualora venisse incaricata per i sopracitati servizi, si riserverà il diritto di utilizzare gli elaborati digitali sviluppati nel corso del progetto per scopi autopromozionali, fatti ovviamente salvo i diritti della Proprietà del Bene.</li>
                 </ul>
                 <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
             </div>
-
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 50px; border: none;">
-                <tr>
-                    <td width="50%" valign="bottom" style="text-align: left;">
-                        <p style="margin: 0 0 60px 0;"><b>Per Sisma SRL</b><br>In fede,</p>
-                        <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
-                        <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
-                    </td>
-                    <td width="50%" valign="bottom" style="text-align: right;">
-                        <p style="margin: 0 0 60px 0;"><b>Per accettazione</b></p>
-                        <p style="margin: 0;">
-                            <span style="margin-right: 10px;">Data: ....................</span>
-                            <span>Firma: ....................</span>
-                        </p>
-                    </td>
-                </tr>
-            </table>
-
-            <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
-                <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
-                <div style="display: flex; justify-content: space-between;">
-                    <div style="text-align: left;">
-                        <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
-                        <b>C.F. | P.IVA:</b> 06557660484
-                    </div>
-                    <div style="text-align: right;">
-                        <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
-                        <b>website:</b> www.sisma-srl.com
-                    </div>
-                </div>
-            </div>
-            </div>
-        </body>
-        </html>
         """
-        html_template = textwrap.dedent(raw_html)
 
+        # =========================================================
+        # 1. TEMPLATE HTML PER MS WORD (Il file scaricato)
+        # =========================================================
+        word_html = f"""<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; }}
+        @page WordSection1 {{
+            size: 595.3pt 841.9pt; 
+            margin: 70.85pt 70.85pt 70.85pt 70.85pt; 
+            mso-header-margin: 35.4pt; 
+            mso-footer-margin: 35.4pt; 
+            mso-header: h1; 
+            mso-footer: f1; 
+        }}
+        div.WordSection1 {{ page: WordSection1; }}
+        p {{ margin: 0; padding: 0; }}
+    </style>
+</head>
+<body>
+<div class="WordSection1">
+    <div style="text-align: right; margin-bottom: 10pt;">
+        <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
+    </div>
+    <div style="text-align: right; margin-top: 20pt;">
+        <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
+        <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
+    </div>
+    <p style="margin-top: 30pt; margin-bottom: 15pt; text-align: left;">{data_str}</p>
+    
+    <div style="margin-bottom: 20pt;">
+        <p style="margin: 0;"><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
+    </div>
+    
+    <p style="margin-bottom: 15pt;">Spett.le {nome_cliente_fmt},<br>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
+    
+    <div style="margin-top: 20pt; margin-bottom: 20pt;">
+        {html_elenco}
+    </div>
+    <div style="margin-bottom: 30pt;">
+        <p style="margin: 0;">Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
+    </div>
+
+    {testo_condizioni}
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 50pt; border: none; font-family: 'Calibri', sans-serif; font-size: 11pt;">
+        <tr>
+            <td width="50%" valign="bottom" style="text-align: left;">
+                <p style="margin: 0 0 60pt 0;"><b>Per Sisma SRL</b><br>In fede,</p>
+                <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
+                <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
+            </td>
+            <td width="50%" valign="bottom" style="text-align: right;">
+                <p style="margin: 0 0 60pt 0;"><b>Per accettazione</b></p>
+                <p style="margin: 0;">
+                    <span style="margin-right: 10px;">Data: ....................</span>
+                    <span>Firma: ....................</span>
+                </p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<table style="display:none; mso-hide:all;">
+    <tr>
+        <td>
+            <div style="mso-element:header" id="h1">
+                <p style="text-align:center; margin:0; padding:0;">
+                    <img src="{img_src}" width="250" alt="Logo Sisma">
+                </p>
+            </div>
+        </td>
+        <td>
+            <div style="mso-element:footer" id="f1">
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-top: 1px solid #0C3A47; font-family: 'Calibri', sans-serif; font-size: 8pt; color: #0C3A47; margin:0;">
+                    <tr>
+                        <td colspan="2" align="center" style="font-weight: bold; padding-top:10pt; padding-bottom: 5pt;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</td>
+                    </tr>
+                    <tr>
+                        <td align="left" valign="top">
+                            <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
+                            <b>C.F. | P.IVA:</b> 06557660484
+                        </td>
+                        <td align="right" valign="top">
+                            <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
+                            <b>website:</b> www.sisma-srl.com
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+    </tr>
+</table>
+</body>
+</html>"""
+
+
+        # =========================================================
+        # 2. TEMPLATE HTML PER ANTEPRIMA WEB (Visibile sull'app)
+        # =========================================================
+        preview_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
+        .page {{ max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <img src="{img_src}" width="250" alt="Logo Sisma">
+    </div>
+    <div style="margin-bottom: 30px;">
+        <div style="text-align: right; margin-bottom: 10px;">
+            <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
+        </div>
+        <div style="text-align: right; margin-top: 20px;">
+            <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
+            <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
+        </div>
+        <p style="margin-top: 40px; margin-bottom: 10px; text-align: left;">{data_str}</p>
+    </div>
+    <div style="margin-bottom: 20px;">
+        <p style="margin: 0;"><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
+    </div>
+    <p style="margin-bottom: 10px;">Spett.le {nome_cliente_fmt},<br>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
+    
+    <div style="margin-top: 30px; margin-bottom: 30px;">
+        {html_elenco}
+    </div>
+    <div style="margin-bottom: 30px;">
+        <p style="margin: 0;">Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
+    </div>
+
+    {testo_condizioni}
+
+    <div style="margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end;">
+        <div style="width: 45%;">
+            <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
+            <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
+            <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
+        </div>
+        <div style="width: 45%; text-align: right;">
+            <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
+            <div style="margin: 0;">
+                 <span style="margin-right: 10px;">Data: ....................</span>
+                 <span>Firma: ....................</span>
+            </div>
+        </div>
+    </div>
+    <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
+        <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
+        <div style="display: flex; justify-content: space-between;">
+            <div style="text-align: left;">
+                <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
+                <b>C.F. | P.IVA:</b> 06557660484
+            </div>
+            <div style="text-align: right;">
+                <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
+                <b>website:</b> www.sisma-srl.com
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>"""
+
+        # Mostriamo l'anteprima (usando il preview_html)
         with st.expander("👁️ ANTEPRIMA DOCUMENTO (Clicca per espandere)", expanded=True):
-            components.html(html_template, height=800, scrolling=True)
+            components.html(textwrap.dedent(preview_html), height=800, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         c_save, c_down = st.columns([1, 1])
@@ -2173,14 +2261,15 @@ def render_preventivi_page():
                     st.rerun()
 
         with c_down:
+            # Scarichiamo il file passandogli il word_html formattato per MS Office
             st.download_button(
                 label="📥 SCARICA IN FORMATO WORD (.doc)", 
-                data=html_template,
+                data=textwrap.dedent(word_html),
                 file_name=f"Preventivo_{new_code.replace('/', '_')}.doc", 
                 mime="application/msword", 
                 use_container_width=True
             )
-            st.caption("ℹ️ Il file scaricato in formato .doc è pronto per essere aperto e modificato su Word.")
+            st.caption("ℹ️ L'immagine verrà posizionata nell'Intestazione (Header) di Word, e il bordo/indirizzi in fondo nel Piè di Pagina (Footer). Fai doppio clic sul bordo della pagina su Word per visualizzarli o modificarli.")
 
     with tab_arch:
         df_prev = carica_dati("Preventivi")
@@ -2222,6 +2311,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
