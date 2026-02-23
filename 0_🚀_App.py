@@ -1802,7 +1802,6 @@ def render_organigramma():
         """, unsafe_allow_html=True)
         
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
-def render_preventivi_page():# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -2218,6 +2217,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
