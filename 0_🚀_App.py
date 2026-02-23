@@ -1816,9 +1816,12 @@ def render_preventivi_page():
     st.markdown("---")
 
     # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
+    # Aggiunto layout specifico @page per istruire Word a creare i margini corretti
     css_lines = [
         "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
-        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
+        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }",
+        "@page WordSection1 { size: 21.0cm 29.7cm; margin: 2.0cm 2.0cm 2.0cm 2.0cm; mso-header-margin: 1.0cm; mso-footer-margin: 1.0cm; mso-header: h1; mso-footer: f1; }",
+        "div.WordSection1 { page: WordSection1; }"
     ]
     CSS_STYLE = " ".join(css_lines)
 
@@ -1912,7 +1915,6 @@ def render_preventivi_page():
         
         c_tipo, c_code = st.columns([1, 1])
         with c_tipo:
-            # AGGIUNTO INTEGRATO QUI
             tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
         with c_code:
             new_code = get_next_prev_id(tipo_prev)
@@ -2013,7 +2015,7 @@ def render_preventivi_page():
             num_rows="dynamic",
             column_config=col_config,
             use_container_width=True,
-            key=f"editor_prev_{tipo_prev}_v4" # Cambio key per forzare refresh widget
+            key=f"editor_prev_{tipo_prev}_v4" 
         )
 
         tot_netto = 0.0
@@ -2056,19 +2058,19 @@ def render_preventivi_page():
         totale_text = formatta_prezzo_testuale(tot_netto)
         img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
-        # COSTRUZIONE HTML SICURA
-        # Nota: I caratteri \ davanti agli apostrofi sono FONDAMENTALI per evitare errori
+        # COSTRUZIONE HTML SICURA CON METADATI WORD (MsoElement)
         raw_html = f"""
         <!DOCTYPE html>
-        <html>
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
         <head>
             <meta charset="utf-8">
             <style>
                 {CSS_STYLE}
             </style>
-        </head>
+            </head>
         <body>
-        <div class="page">
+        <div class="page WordSection1">
+
             <div style="text-align: center; margin-bottom: 30px;">
                 <img src="{img_src}" width="250" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
             </div>
@@ -2109,20 +2111,24 @@ def render_preventivi_page():
                 </ul>
                 <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
             </div>
-            <div style="margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end;">
-                <div style="width: 45%;">
-                    <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
-                    <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
-                    <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
-                </div>
-                <div style="width: 45%; text-align: right;">
-                    <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
-                    <div style="margin: 0;">
-                         <span style="margin-right: 10px;">Data: ....................</span>
-                         <span>Firma: ....................</span>
-                    </div>
-                </div>
-            </div>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 50px; border: none;">
+                <tr>
+                    <td width="50%" valign="bottom" style="text-align: left;">
+                        <p style="margin: 0 0 60px 0;"><b>Per Sisma SRL</b><br>In fede,</p>
+                        <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
+                        <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
+                    </td>
+                    <td width="50%" valign="bottom" style="text-align: right;">
+                        <p style="margin: 0 0 60px 0;"><b>Per accettazione</b></p>
+                        <p style="margin: 0;">
+                            <span style="margin-right: 10px;">Data: ....................</span>
+                            <span>Firma: ....................</span>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
             <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
                 <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
                 <div style="display: flex; justify-content: space-between;">
@@ -2136,7 +2142,7 @@ def render_preventivi_page():
                     </div>
                 </div>
             </div>
-        </div>
+            </div>
         </body>
         </html>
         """
@@ -2167,7 +2173,6 @@ def render_preventivi_page():
                     st.rerun()
 
         with c_down:
-            # MODIFICATO PER ESPORTAZIONE IN .DOC
             st.download_button(
                 label="📥 SCARICA IN FORMATO WORD (.doc)", 
                 data=html_template,
@@ -2217,6 +2222,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
