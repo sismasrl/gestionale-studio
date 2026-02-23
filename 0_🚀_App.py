@@ -1802,8 +1802,7 @@ def render_organigramma():
         """, unsafe_allow_html=True)
         
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
-def render_preventivi_page():
-    import textwrap# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+def render_preventivi_page():# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1817,12 +1816,12 @@ def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS (Metodo Sicuro senza f-string) ===
+    # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
     css_lines = [
         "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
         ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
     ]
-    CSS_STYLE = "\n".join(css_lines)
+    CSS_STYLE = " ".join(css_lines)
 
     # --- HELPER: CONVERSIONE NUMERO IN LETTERE ---
     def numero_a_lettere(n):
@@ -1876,9 +1875,9 @@ def render_preventivi_page():
         testo_intero = numero_a_lettere(intero)
         return f"{testo_intero}/{decimali:02d}"
 
-    # Helper per ID univoco
+    # Helper per ID univoco (AGGIUNTO INTEGRATO)
     def get_next_prev_id(tipo):
-        prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC"}
+        prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC", "INTEGRATO": "PR-INT"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
         df_prev = carica_dati("Preventivi")
         max_n = 0
@@ -1914,7 +1913,8 @@ def render_preventivi_page():
         
         c_tipo, c_code = st.columns([1, 1])
         with c_tipo:
-            tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA"], horizontal=True)
+            # AGGIUNTO INTEGRATO QUI
+            tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
         with c_code:
             new_code = get_next_prev_id(tipo_prev)
             st.metric("Codice Documento", new_code)
@@ -2058,7 +2058,7 @@ def render_preventivi_page():
         img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
         # COSTRUZIONE HTML SICURA
-        # Nota: Ho aggiunto backslash (\) davanti a tutti gli apostrofi nel testo per evitare errori di sintassi.
+        # Nota: I caratteri \ davanti agli apostrofi sono FONDAMENTALI per evitare errori
         raw_html = f"""
         <!DOCTYPE html>
         <html>
@@ -2168,11 +2168,15 @@ def render_preventivi_page():
                     st.rerun()
 
         with c_down:
+            # MODIFICATO PER ESPORTAZIONE IN .DOC
             st.download_button(
-                label="📥 SCARICA PER WORD (.html/doc)", data=html_template,
-                file_name=f"Preventivo_{new_code.replace('/', '_')}.html", mime="text/html", use_container_width=True
+                label="📥 SCARICA IN FORMATO WORD (.doc)", 
+                data=html_template,
+                file_name=f"Preventivo_{new_code.replace('/', '_')}.doc", 
+                mime="application/msword", 
+                use_container_width=True
             )
-            st.caption("ℹ️ Il file scaricato si apre direttamente in Word mantenendo la formattazione.")
+            st.caption("ℹ️ Il file scaricato in formato .doc è pronto per essere aperto e modificato su Word.")
 
     with tab_arch:
         df_prev = carica_dati("Preventivi")
@@ -2214,6 +2218,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
