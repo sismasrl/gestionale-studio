@@ -2070,7 +2070,7 @@ def render_preventivi_page():
         <body>
         <div class="page">
             <div style="text-align: center; margin-bottom: 30px;">
-                <img src="{img_src}" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
+                <img src="{img_src}" width="250" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
             </div>
             <div style="margin-bottom: 30px;">
                 <div style="text-align: right; margin-bottom: 10px;">
@@ -2217,6 +2217,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
