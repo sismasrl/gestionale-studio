@@ -1815,17 +1815,16 @@ def render_preventivi_page():
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS (OTTIMIZZATO PER WORD) ===
+    # === DEFINIZIONE STILE CSS (IL TUO ORIGINALE) ===
     css_lines = [
-        "body { font-family: 'Calibri', sans-serif; font-size: 11pt; }",
-        "@page Section1 { size: 595.3pt 841.9pt; margin: 70.85pt 70.85pt 70.85pt 70.85pt; mso-header-margin: 35.4pt; mso-footer-margin: 35.4pt; mso-header: h1; mso-footer: f1; }",
-        "div.Section1 { page: Section1; }",
-        "p.MsoHeader, p.MsoFooter { margin:0in; margin-bottom:.0001pt; }",
-        "table.footer-table { width: 100%; border-top: 1px solid #0C3A47; color: #0C3A47; font-size: 8pt; }"
+        "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
+        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }",
+        "table { border-collapse: collapse; border: none !important; }",
+        "td { border: none !important; padding: 5px 0; }"
     ]
     CSS_STYLE = " ".join(css_lines)
 
-    # --- HELPER: CONVERSIONE NUMERO IN LETTERE (TUO ORIGINALE) ---
+    # --- FUNZIONI DI SUPPORTO (TUE ORIGINALI) ---
     def numero_a_lettere(n):
         if n == 0: return "zero"
         numeri = {1: "uno", 2: "due", 3: "tre", 4: "quattro", 5: "cinque", 6: "sei", 7: "sette", 8: "otto", 9: "nove", 10: "dieci", 11: "undici", 12: "dodici", 13: "tredici", 14: "quattordici", 15: "quindici", 16: "sedici", 17: "diciassette", 18: "diciotto", 19: "diciannove", 20: "venti", 30: "trenta", 40: "quaranta", 50: "cinquanta", 60: "sessanta", 70: "settanta", 80: "ottanta", 90: "novanta"}
@@ -1887,7 +1886,7 @@ def render_preventivi_page():
         except: return None
         return None
 
-    # --- LOGICA INPUT (TUO ORIGINALE) ---
+    # --- INTERFACCIA UTENTE ---
     tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
     new_code = get_next_prev_id(tipo_prev)
     st.metric("Codice", new_code)
@@ -1915,86 +1914,92 @@ def render_preventivi_page():
     giorni_preavviso = st.number_input("Preavviso", value=10)
     perc_anticipo = st.number_input("Anticipo %", value=15)
 
-    # --- COSTRUZIONE HTML PER WORD (HEADER E FOOTER BLOCCATI) ---
+    # --- COSTRUZIONE HTML (IL TUO ORIGINALE RIPRISTINATO) ---
     mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
     data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
     img_src = get_default_logo_base64() or ""
     
-    html_elenco = "".join([f'<div style="margin-bottom: 20px;"><b>{i}. {v["titolo"]}</b><br><p style="text-align:justify;">{v["descrizione"]}</p><b>Costo: {fmt_num(v["prezzo"])} ({formatta_prezzo_testuale(v["prezzo"])} euro)</b></div>' for i, v in enumerate(dettagli_list, 1)])
+    html_voci = "".join([f'<div style="margin-bottom: 25px;"><p style="margin: 0;"><b>{i}. {v["titolo"]}</b></p><p style="margin-top: 5px; margin-bottom: 5px; text-align: justify; line-height: 1.4;">{v["descrizione"]}</p><p style="margin: 0;"><b>Costo: {fmt_num(v["prezzo"])} ({formatta_prezzo_testuale(v["prezzo"])} euro)</b></p></div>' for i, v in enumerate(dettagli_list, 1)])
 
-    full_html = f"""
+    raw_html = f"""
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head>
-        <meta charset="utf-8">
-        <style>{CSS_STYLE}</style>
-    </head>
+    <head><meta charset="utf-8"><style>{CSS_STYLE}</style></head>
     <body>
-    <div class="Section1">
-        
-        <div style='mso-element:header' id=h1>
-            <p class=MsoHeader style='text-align:center'>
-                <img width=600 src="{img_src}">
-            </p>
+    <div class="page">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <img src="{img_src}" style="width: 500px; height: auto;">
         </div>
 
-        <div style="text-align: right; margin-top: 20pt;">
-            <p style="font-weight: bold; font-size: 12pt;">Preventivo n. {new_code}</p>
-            <p><i>{cli_sel}</i><br>{indirizzo_cli.replace(chr(10), '<br>')}</p>
+        <div style="text-align: right; margin-bottom: 30px;">
+            <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
+            <p style="margin: 20px 0 0 0; font-style: italic;">{cli_sel}</p>
+            <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>')}</p>
         </div>
         
-        <p style="margin-top: 30pt;">{data_str}</p>
+        <p style="margin-top: 40px;">{data_str}</p>
         <p><b>Oggetto: {oggetto_prev}</b></p>
         
         <p>Spett.le {cli_sel},</p>
-        <p style="text-align:justify;">come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività:</p>
+        <p style="text-align: justify;">come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
         
-        <div style="margin-top: 20pt;">{html_elenco}</div>
+        <div style="margin-top: 30px;">{html_voci}</div>
         
-        <p style="margin-top: 20pt;">Per un costo complessivo di: <b>{fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
+        <p style="margin-top: 30px;">Per un costo complessivo di: <b>{fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
 
-        <div style="font-size: 10pt; text-align: justify; margin-top: 20pt;">
-            <b>Note e Condizioni:</b>
-            <ul>
-                <li>Il presente preventivo si intende <b>IVA ESCLUSA</b>.</li>
-                <li>Preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b>.</li>
-                <li>Anticipo del <b>{perc_anticipo}%</b>.</li>
+        <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
+            <p><b>Note e Condizioni:</b></p>
+            <ul style="padding-left: 20px; margin: 0;">
+                <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b>.</li>
+                <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive dovranno essere preventivamente approvate dalla Committenza.</li>
+                <li style="margin-bottom: 5px;">Nel presente preventivo non sono conteggiate eventuali opere provvisionali.</li>
+                <li style="margin-bottom: 5px;">Le tempistiche sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
+                <li style="margin-bottom: 5px;">Si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito.</li>
+                <li style="margin-bottom: 5px;">Il preventivo dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
+                <li style="margin-bottom: 5px;">Preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e pagamento dell\'anticipo del <b>{perc_anticipo}%</b>.</li>
                 <li>SISMA srl si riserva il diritto di utilizzare gli elaborati per scopi autopromozionali.</li>
             </ul>
         </div>
 
-        <table style="width:100%; margin-top:40pt; border:none;">
+        <table style="width: 100%; margin-top: 50px; border: none !important;" border="0" cellspacing="0" cellpadding="0">
             <tr>
-                <td style="width:50%; vertical-align:top;">
-                    <b>Per Sisma SRL</b><br>In fede,<br><br><br><b>Arch. {socio_nome}</b><br>{socio_tel}
+                <td style="width: 50%; vertical-align: bottom; border: none !important;">
+                    <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
+                    <p style="margin: 0;"><b>Arch. {socio_nome}</b></p>
+                    <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
                 </td>
-                <td style="width:50%; text-align:right; vertical-align:top;">
-                    <b>Per accettazione</b><br><br><br>Data: .................... Firma: ....................
+                <td style="width: 50%; text-align: right; vertical-align: bottom; border: none !important;">
+                    <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
+                    <p style="margin: 0;">Data: .................... Firma: ....................</p>
                 </td>
             </tr>
         </table>
 
-        <div style='mso-element:footer' id=f1>
-            <p class=MsoFooter>
-                <table class="footer-table" style="width:100%; border-top:1px solid #0C3A47;">
-                    <tr>
-                        <td colspan="2" style="text-align:center; font-weight:bold; padding-top:5pt;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</td>
-                    </tr>
-                    <tr>
-                        <td style="text-align:left; font-size:8pt;">sede: Piazza Togliatti, 40 – Scandicci (FI)<br>C.F. | P.IVA: 06557660484</td>
-                        <td style="text-align:right; font-size:8pt;">e-mail: info@sisma-srl.com<br>website: www.sisma-srl.com</td>
-                    </tr>
-                </table>
-            </p>
+        <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
+            <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
+            <table style="width: 100%; border: none !important;" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td style="text-align: left; border: none !important;">
+                        <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI)<br><b>C.F. | P.IVA:</b> 06557660484
+                    </td>
+                    <td style="text-align: right; border: none !important;">
+                        <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br><b>website:</b> www.sisma-srl.com
+                    </td>
+                </tr>
+            </table>
         </div>
-
     </div>
     </body>
     </html>
     """
 
+    # --- RENDER ANTEPRIMA ---
+    with st.expander("👁️ ANTEPRIMA DOCUMENTO", expanded=True):
+        components.html(raw_html, height=800, scrolling=True)
+
+    # --- DOWNLOAD ---
     st.download_button(
-        label="📥 SCARICA PREVENTIVO (FORMATO CORRETTO)",
-        data=full_html,
+        label="📥 SCARICA PREVENTIVO (.doc)",
+        data=raw_html,
         file_name=f"Preventivo_{new_code.replace('/', '_')}.doc",
         mime="application/msword",
         use_container_width=True
@@ -2025,6 +2030,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
