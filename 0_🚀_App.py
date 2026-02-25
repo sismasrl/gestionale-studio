@@ -1801,7 +1801,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
         
-# # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1813,7 +1813,7 @@ def render_preventivi_page():
     import pandas as pd
     import io
     
-    # Import per la generazione reale del file Word
+    # Import per la generazione del file Word reale (ora disponibile tramite requirements)
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -1873,7 +1873,6 @@ def render_preventivi_page():
         testo_intero = numero_a_lettere(intero)
         return f"{testo_intero}/{decimali:02d}"
 
-    # Helper per ID univoco
     def get_next_prev_id(tipo):
         prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC", "INTEGRATO": "PR-INT"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
@@ -1890,9 +1889,8 @@ def render_preventivi_page():
 
     fmt_num = lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # Gestione Logo
     @st.cache_data(show_spinner=False) 
-    def get_logo_content():
+    def get_default_logo_bytes():
         file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
         try:
@@ -1903,88 +1901,93 @@ def render_preventivi_page():
             return None
         return None
 
-    logo_bytes = get_logo_content()
-    img_src = f"data:image/png;base64,{base64.b64encode(logo_bytes).decode()}" if logo_bytes else ""
+    logo_data = get_default_logo_bytes()
+    img_src = f"data:image/png;base64,{base64.b64encode(logo_data).decode()}" if logo_data else ""
 
-    # --- FUNZIONE GENERAZIONE DOCX ---
-    def genera_docx_sisma(new_code, nome_cliente, indirizzo_cli, data_str, oggetto, dettagli, totale_n, totale_t, socio_firma, socio_tel, giorni, anticipo):
+    # --- LOGICA GENERAZIONE DOCX ---
+    def genera_docx_sisma(new_code, nome_cliente, indirizzo_cli, data_str, oggetto, dettagli, totale_n, totale_t, socio_f, socio_t, giorni, anticipo):
         doc = Document()
         section = doc.sections[0]
-        
-        # Margini standard
-        section.top_margin = Inches(0.7)
+        section.page_height = Inches(11.69)
+        section.page_width = Inches(8.27)
+        section.top_margin = Inches(0.6)
         section.bottom_margin = Inches(0.8)
 
-        # 1. INTESTAZIONE (HEADER) - Logo
+        # 1. HEADER (LOGO)
         header = section.header
-        h_para = header.paragraphs[0]
-        h_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if logo_bytes:
-            run_h = h_para.add_run()
-            run_h.add_picture(io.BytesIO(logo_bytes), width=Inches(2.5))
+        htab = header.paragraphs[0]
+        htab.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if logo_data:
+            run_logo = htab.add_run()
+            run_logo.add_picture(io.BytesIO(logo_data), width=Inches(2.4))
 
-        # 2. PIÈ DI PAGINA (FOOTER) - Dati Aziendali
+        # 2. FOOTER (INFO AZIENDALI)
         footer = section.footer
-        f_para = footer.paragraphs[0]
-        f_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        f_p = footer.paragraphs[0]
+        f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Linea colorata
-        run_line = f_para.add_run("__________________________________________________________________\n")
-        run_line.font.color.rgb = RGBColor(12, 58, 71) # Colore #0C3A47
+        run_l = f_p.add_run("__________________________________________________________________\n")
+        run_l.font.color.rgb = RGBColor(12, 58, 71)
 
-        run_f1 = f_para.add_run("SISMA – Sistemi Integrati di Monitoraggio Architettonico srl\n")
+        run_f1 = f_p.add_run("SISMA – Sistemi Integrati di Monitoraggio Architettonico srl\n")
         run_f1.bold = True
-        run_f1.font.size = Pt(8)
+        run_f1.font.size = Pt(8.5)
         run_f1.font.color.rgb = RGBColor(12, 58, 71)
         
-        run_f2 = f_para.add_run("sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018 | C.F. | P.IVA: 06557660484\ne-mail: info@sisma-srl.com | PEC: sisma2015@pec.cgn.it | website: www.sisma-srl.com")
+        run_f2 = f_p.add_run("sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018 | C.F. | P.IVA: 06557660484\ne-mail | PEC: info@sisma-srl.com | sisma2015@pec.cgn.it | website: www.sisma-srl.com")
         run_f2.font.size = Pt(8)
         run_f2.font.color.rgb = RGBColor(12, 58, 71)
 
-        # 3. CORPO DEL TESTO
-        # Numero preventivo a destra
-        p_num = doc.add_paragraph()
-        p_num.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p_num.add_run(f"Preventivo n. {new_code}").bold = True
+        # 3. CORPO TESTO
+        # Codice a destra
+        p_code = doc.add_paragraph()
+        p_code.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p_code.add_run(f"Preventivo n. {new_code}").bold = True
 
         # Cliente a destra
         p_cli = doc.add_paragraph()
         p_cli.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        run_cli = p_cli.add_run(f"\nSpett.le\n{nome_cliente}\n{indirizzo_cli}")
+        run_cli = p_cli.add_run(f"\n{nome_cliente}\n{indirizzo_cli}")
         run_cli.italic = True
 
-        # Data e Oggetto
         doc.add_paragraph(f"\n{data_str}")
+        
         p_obj = doc.add_paragraph()
         p_obj.add_run(f"Oggetto: {oggetto}").bold = True
 
         doc.add_paragraph(f"\nSpett.le {nome_cliente},\ncome da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:")
 
-        # Elenco voci
         for i, item in enumerate(dettagli, 1):
-            p_titolo = doc.add_paragraph(style='Normal')
-            p_titolo.add_run(f"\n{i}. {item['titolo']}").bold = True
+            p_tit = doc.add_paragraph()
+            p_tit.add_run(f"\n{i}. {item['titolo']}").bold = True
             doc.add_paragraph(item['descrizione'])
             doc.add_paragraph(f"Costo: {fmt_num(item['prezzo'])} ({formatta_prezzo_testuale(item['prezzo'])} euro)").bold = True
 
-        # Totale
-        p_fine = doc.add_paragraph(f"\nPer un costo complessivo di: ")
-        p_fine.add_run(f"{totale_n} ({totale_t} euro)").bold = True
+        p_tot = doc.add_paragraph(f"\nPer un costo complessivo di: ")
+        p_tot.add_run(f"{totale_n} ({totale_t} euro)").bold = True
 
-        # Condizioni (brevi)
-        doc.add_paragraph(f"\nIl presente preventivo si intende IVA ESCLUSA. Preavviso minimo di giorni {giorni} e anticipo del {anticipo}%.")
+        # Condizioni Contrattuali
+        doc.add_paragraph("\nNote e Condizioni:").bold = True
+        condizioni_testo = [
+            "Il presente preventivo si intende IVA ESCLUSA.",
+            "Eventuali indagini aggiuntive dovranno essere preventivamente approvate.",
+            f"Preavviso minimo di giorni {giorni} (solari) e anticipo del {anticipo}%.",
+            "La Società SISMA srl si riserva il diritto di utilizzare gli elaborati per scopi autopromozionali."
+        ]
+        for cond in condizioni_testo:
+            p_c = doc.add_paragraph(cond, style='List Bullet')
+            p_c.paragraph_format.left_indent = Inches(0.2)
 
         # Firme
         table = doc.add_table(rows=1, cols=2)
-        table.width = Inches(6.0)
+        table.autofit = True
         c1, c2 = table.rows[0].cells
-        
         p1 = c1.paragraphs[0]
-        p1.add_run(f"\n\nPer Sisma SRL\nIn fede,\n\n{socio_firma}\n{socio_tel}")
+        p1.add_run(f"\n\nPer Sisma SRL\nIn fede,\n\n{socio_f}\n{socio_t}").bold = True
         
         p2 = c2.paragraphs[0]
         p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p2.add_run(f"\n\nPer accettazione\n\nData: .........................\nFirma: .........................")
+        p2.add_run(f"\n\nPer accettazione\n\nData: .........................\nFirma: .........................").bold = True
 
         buffer = io.BytesIO()
         doc.save(buffer)
@@ -1993,7 +1996,6 @@ def render_preventivi_page():
 
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
-    # --- TAB 1: CREAZIONE ---
     with tab_new:
         st.info("Compila i dati per generare un preventivo su carta intestata SISMA.")
         
@@ -2005,7 +2007,6 @@ def render_preventivi_page():
             st.metric("Codice Documento", new_code)
 
         st.markdown("---")
-        
         df_cli = carica_dati("Clienti")
         nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
 
@@ -2020,19 +2021,14 @@ def render_preventivi_page():
         
         st.markdown("**Firma Socio:**")
         c_soc1, c_soc2 = st.columns([1, 3])
-        
         soci_data = {
             "Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807",
             "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378",
             "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285",
             "Giovanni Pancani": "+39 3355719188"
         }
-        
-        with c_soc1:
-            titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
-        with c_soc2:
-            lista_nomi_soci = sorted(list(soci_data.keys()))
-            socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=0)
+        with c_soc1: titolo_socio = st.text_input("Titolo", value="Arch.")
+        with c_soc2: socio_nome = st.selectbox("Socio Firmatario", sorted(list(soci_data.keys())), index=2)
         
         socio_tel = soci_data.get(socio_nome, "")
         socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
@@ -2046,19 +2042,17 @@ def render_preventivi_page():
                 for col_name in ["Sede", "Indirizzo", "Sede Legale"]:
                     if col_name in row_cli.columns:
                         val = str(row_cli.iloc[0][col_name])
-                        if val and val != "nan":
-                            indirizzo_trovato = val
-                            break
+                        if val and val != "nan": indirizzo_trovato = val; break
         indirizzo_cli = st.text_area("Indirizzo Completo", value=indirizzo_trovato, height=68)
 
-        st.markdown("### 3. Oggetto del Preventivo")
-        oggetto_prev = st.text_area("Oggetto", height=70, placeholder="Es. Rilievo architettonico...")
+        st.markdown("### 3. Oggetto")
+        oggetto_prev = st.text_area("Inserisci l'oggetto", height=70, placeholder="Es. Rilievo architettonico...")
 
         st.markdown("### 4. Voci di Costo")
         if "prev_lines" not in st.session_state:
             st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
 
-        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key=f"edit_{tipo_prev}")
+        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key=f"edit_{tipo_prev}_final")
 
         tot_netto = 0.0
         dettagli_list = []
@@ -2069,56 +2063,43 @@ def render_preventivi_page():
             if tit.strip():
                 tot_netto += p
                 dettagli_list.append({"titolo": tit, "descrizione": desc, "prezzo": p})
-        
-        st.markdown("### 5. Condizioni")
-        col_cond1, col_cond2 = st.columns(2)
-        with col_cond1: giorni_preavviso = st.number_input("Giorni Preavviso", value=10)
-        with col_cond2: perc_anticipo = st.number_input("Anticipo (%)", value=15)
 
-        # --- ANTEPRIMA HTML (Solo Web) ---
+        st.markdown("### 5. Condizioni")
+        c_c1, c_c2 = st.columns(2)
+        with c_c1: giorni_preavviso = st.number_input("Giorni Preavviso", value=10)
+        with c_c2: perc_anticipo = st.number_input("Anticipo %", value=15)
+
+        # Anteprima HTML
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
-        nome_cliente_fmt = cli_sel if cli_sel else "...................."
-
-        preview_html = f"""<div style="font-family: Calibri, sans-serif; padding: 40px; background: white; border: 1px solid #ddd;">
+        
+        preview_html = f"""<div style="font-family: Calibri, sans-serif; padding: 40px; background: white; border: 1px solid #ddd; max-width: 700px; margin: auto;">
             <center><img src="{img_src}" width="200"></center>
-            <div style="text-align: right; margin-top: 20px;"><b>Preventivo n. {new_code}</b><br><i>{nome_cliente_fmt}</i><br>{indirizzo_cli}</div>
+            <div style="text-align: right; margin-top: 30px;"><b>Preventivo n. {new_code}</b><br><i>{cli_sel}</i><br>{indirizzo_cli}</div>
             <p>{data_str}</p>
             <p><b>Oggetto: {oggetto_prev}</b></p>
-            <div style="margin-top: 20px;">{"".join([f"<p><b>{i+1}. {d['titolo']}</b>: {fmt_num(d['prezzo'])}</p>" for i, d in enumerate(dettagli_list)])}</div>
+            {"".join([f"<p><b>{i+1}. {d['titolo']}</b><br>{d['descrizione']}<br>Costo: {fmt_num(d['prezzo'])}</p>" for i, d in enumerate(dettagli_list)])}
             <p><b>Totale: {fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
+            <hr style="border-top: 1px solid #0C3A47; margin-top: 50px;">
+            <p style="text-align: center; color: #0C3A47; font-size: 8pt;">SISMA srl - Piazza Togliatti 40, Scandicci (FI)</p>
         </div>"""
+        with st.expander("👁️ ANTEPRIMA DOCUMENTO", expanded=True):
+            components.html(preview_html, height=600, scrolling=True)
 
-        with st.expander("👁️ ANTEPRIMA", expanded=True):
-            components.html(preview_html, height=500, scrolling=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
         c_save, c_down = st.columns(2)
-        
         with c_save:
             if st.button("💾 SALVA IN ARCHIVIO", type="primary", use_container_width=True):
-                record = {"Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev), "Cliente": cli_sel, "Oggetto": oggetto_prev, "Totale Lordo": tot_netto, "Stato": stato_prev}
+                record = {"Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev), "Cliente": cli_sel, "Oggetto": oggetto_prev, "Totale Lordo": tot_netto, "Stato": stato_prev, "Dati_JSON": json.dumps(dettagli_list)}
                 salva_record(record, "Preventivi", "Codice", "new")
-                st.success("Salvato!")
+                st.success("Preventivo salvato!")
 
         with c_down:
-            # Trigger della generazione DOCX
-            docx_buffer = genera_docx_sisma(
-                new_code, nome_cliente_fmt, indirizzo_cli, data_str, oggetto_prev,
-                dettagli_list, fmt_num(tot_netto), formatta_prezzo_testuale(tot_netto),
-                socio_firma_completo, socio_tel, giorni_preavviso, perc_anticipo
-            )
-            
-            st.download_button(
-                label="📥 SCARICA IN FORMATO WORD (.docx)", 
-                data=docx_buffer,
-                file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", 
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                use_container_width=True
-            )
+            docx_buffer = genera_docx_sisma(new_code, cli_sel, indirizzo_cli, data_str, oggetto_prev, dettagli_list, fmt_num(tot_netto), formatta_prezzo_testuale(tot_netto), socio_firma_completo, socio_tel, giorni_preavviso, perc_anticipo)
+            st.download_button(label="📥 SCARICA IN FORMATO WORD (.docx)", data=docx_buffer, file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
     with tab_arch:
-        st.info("Area Archivio")
+        # Codice archivio esistente...
+        pass
 
 # --- 8. ROUTING ---
 with st.sidebar:
@@ -2145,6 +2126,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
