@@ -1812,14 +1812,21 @@ def render_preventivi_page():
     from datetime import date
     import pandas as pd
     import io
-    
-    # Import per la generazione del file Word reale (ora disponibile tramite requirements)
+
+    # Import per la generazione reale del file Word (Python-Docx)
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
+
+    # === DEFINIZIONE STILE CSS (Anteprima Web) ===
+    css_lines = [
+        "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
+        ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
+    ]
+    CSS_STYLE = " ".join(css_lines)
 
     # --- HELPER: CONVERSIONE NUMERO IN LETTERE ---
     def numero_a_lettere(n):
@@ -1851,7 +1858,6 @@ def render_preventivi_page():
                 if resto != 0: ris += converti_centinaia(resto)
                 return ris
             return ""
-
         def converti_mille(num):
             if num < 1000: return converti_centinaia(num)
             k = num // 1000
@@ -1860,12 +1866,10 @@ def render_preventivi_page():
             if k > 1: ris = converti_centinaia(k) + "mila"
             if resto != 0: ris += converti_centinaia(resto)
             return ris
-            
         try:
             intero = int(n)
             return converti_mille(intero)
-        except:
-            return str(n)
+        except: return str(n)
 
     def formatta_prezzo_testuale(valore):
         intero = int(valore)
@@ -1890,215 +1894,188 @@ def render_preventivi_page():
     fmt_num = lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
     @st.cache_data(show_spinner=False) 
-    def get_default_logo_bytes():
+    def get_logo_data():
         file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
         try:
             response = requests.get(url)
-            if response.status_code == 200:
-                return response.content
-        except:
-            return None
+            if response.status_code == 200: return response.content
+        except: return None
         return None
 
-    logo_data = get_default_logo_bytes()
-    img_src = f"data:image/png;base64,{base64.b64encode(logo_data).decode()}" if logo_data else ""
+    logo_bytes = get_logo_data()
+    img_b64 = f"data:image/png;base64,{base64.b64encode(logo_bytes).decode()}" if logo_bytes else ""
 
-    # --- LOGICA GENERAZIONE DOCX ---
+    # --- FUNZIONE GENERAZIONE DOCX ---
     def genera_docx_sisma(new_code, nome_cliente, indirizzo_cli, data_str, oggetto, dettagli, totale_n, totale_t, socio_f, socio_t, giorni, anticipo):
         doc = Document()
         section = doc.sections[0]
-        section.page_height = Inches(11.69)
-        section.page_width = Inches(8.27)
-        section.top_margin = Inches(0.6)
-        section.bottom_margin = Inches(0.8)
+        section.top_margin, section.bottom_margin = Inches(0.5), Inches(0.8)
 
-        # 1. HEADER (LOGO)
+        # 1. Header (Logo)
         header = section.header
         htab = header.paragraphs[0]
         htab.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if logo_data:
+        if logo_bytes:
             run_logo = htab.add_run()
-            run_logo.add_picture(io.BytesIO(logo_data), width=Inches(2.4))
+            run_logo.add_picture(io.BytesIO(logo_bytes), width=Inches(2.4))
 
-        # 2. FOOTER (INFO AZIENDALI)
+        # 2. Footer (Dati Aziendali)
         footer = section.footer
         f_p = footer.paragraphs[0]
         f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
         run_l = f_p.add_run("__________________________________________________________________\n")
         run_l.font.color.rgb = RGBColor(12, 58, 71)
-
         run_f1 = f_p.add_run("SISMA – Sistemi Integrati di Monitoraggio Architettonico srl\n")
-        run_f1.bold = True
-        run_f1.font.size = Pt(8.5)
-        run_f1.font.color.rgb = RGBColor(12, 58, 71)
-        
+        run_f1.bold, run_f1.font.size, run_f1.font.color.rgb = True, Pt(8.5), RGBColor(12, 58, 71)
         run_f2 = f_p.add_run("sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018 | C.F. | P.IVA: 06557660484\ne-mail | PEC: info@sisma-srl.com | sisma2015@pec.cgn.it | website: www.sisma-srl.com")
-        run_f2.font.size = Pt(8)
-        run_f2.font.color.rgb = RGBColor(12, 58, 71)
+        run_f2.font.size, run_f2.font.color.rgb = Pt(8), RGBColor(12, 58, 71)
 
-        # 3. CORPO TESTO
-        # Codice a destra
+        # 3. Corpo Testo
         p_code = doc.add_paragraph()
         p_code.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p_code.add_run(f"Preventivo n. {new_code}").bold = True
 
-        # Cliente a destra
         p_cli = doc.add_paragraph()
         p_cli.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         run_cli = p_cli.add_run(f"\n{nome_cliente}\n{indirizzo_cli}")
         run_cli.italic = True
 
         doc.add_paragraph(f"\n{data_str}")
-        
-        p_obj = doc.add_paragraph()
-        p_obj.add_run(f"Oggetto: {oggetto}").bold = True
-
-        doc.add_paragraph(f"\nSpett.le {nome_cliente},\ncome da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:")
+        p_obj = doc.add_paragraph(); p_obj.add_run(f"Oggetto: {oggetto}").bold = True
+        doc.add_paragraph(f"\nSpett.le {nome_cliente}, come da contatti intercorsi, riportiamo il dettaglio delle offerte tecnico-economiche:")
 
         for i, item in enumerate(dettagli, 1):
-            p_tit = doc.add_paragraph()
-            p_tit.add_run(f"\n{i}. {item['titolo']}").bold = True
+            doc.add_paragraph(f"\n{i}. {item['titolo']}", style='List Number').bold = True
             doc.add_paragraph(item['descrizione'])
             doc.add_paragraph(f"Costo: {fmt_num(item['prezzo'])} ({formatta_prezzo_testuale(item['prezzo'])} euro)").bold = True
 
-        p_tot = doc.add_paragraph(f"\nPer un costo complessivo di: ")
-        p_tot.add_run(f"{totale_n} ({totale_t} euro)").bold = True
+        p_tot = doc.add_paragraph(f"\nPer un costo complessivo di: "); p_tot.add_run(f"{totale_n} ({totale_t} euro)").bold = True
 
-        # Condizioni Contrattuali
+        # Note
         doc.add_paragraph("\nNote e Condizioni:").bold = True
-        condizioni_testo = [
+        notes = [
             "Il presente preventivo si intende IVA ESCLUSA.",
-            "Eventuali indagini aggiuntive dovranno essere preventivamente approvate.",
-            f"Preavviso minimo di giorni {giorni} (solari) e anticipo del {anticipo}%.",
-            "La Società SISMA srl si riserva il diritto di utilizzare gli elaborati per scopi autopromozionali."
+            "Indagini aggiuntive dovranno essere preventivamente approvate.",
+            "Opere provvisionali non incluse.",
+            "Tempistiche suscettibili di modifica per condizioni meteo.",
+            "Si richiedono permessi di accesso al sito.",
+            "Il preventivo dovrà essere perfezionato con contratto.",
+            f"Preavviso minimo di {giorni} giorni e anticipo del {anticipo}%.",
+            "Diritto di utilizzo elaborati per scopi autopromozionali."
         ]
-        for cond in condizioni_testo:
-            p_c = doc.add_paragraph(cond, style='List Bullet')
-            p_c.paragraph_format.left_indent = Inches(0.2)
+        for n in notes: doc.add_paragraph(n, style='List Bullet')
 
         # Firme
         table = doc.add_table(rows=1, cols=2)
-        table.autofit = True
         c1, c2 = table.rows[0].cells
-        p1 = c1.paragraphs[0]
-        p1.add_run(f"\n\nPer Sisma SRL\nIn fede,\n\n{socio_f}\n{socio_t}").bold = True
-        
-        p2 = c2.paragraphs[0]
-        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        c1.paragraphs[0].add_run(f"\n\nPer Sisma SRL\nIn fede,\n\n{socio_f}\n{socio_t}").bold = True
+        p2 = c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p2.add_run(f"\n\nPer accettazione\n\nData: .........................\nFirma: .........................").bold = True
 
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
+        buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+        return buf
 
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
     with tab_new:
         st.info("Compila i dati per generare un preventivo su carta intestata SISMA.")
-        
         c_tipo, c_code = st.columns([1, 1])
-        with c_tipo:
-            tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
-        with c_code:
+        with c_tipo: tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
+        with c_code: 
             new_code = get_next_prev_id(tipo_prev)
             st.metric("Codice Documento", new_code)
-
+        
         st.markdown("---")
         df_cli = carica_dati("Clienti")
         nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
 
         st.markdown("### 1. Dati Documento")
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c1:
-            data_prev = st.date_input("Data Emissione", value=date.today())
-        with c2:
-            luogo_data = st.text_input("Luogo", value="Scandicci")
-        with c3:
-            stato_prev = st.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
+        c1, c2, c3 = st.columns(3)
+        with c1: data_prev = st.date_input("Data Emissione", value=date.today())
+        with c2: luogo_data = st.text_input("Luogo", value="Scandicci")
+        with c3: stato_prev = st.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
         
         st.markdown("**Firma Socio:**")
         c_soc1, c_soc2 = st.columns([1, 3])
-        soci_data = {
-            "Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807",
-            "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378",
-            "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285",
-            "Giovanni Pancani": "+39 3355719188"
-        }
+        soci_data = {"Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807", "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378", "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285", "Giovanni Pancani": "+39 3355719188"}
         with c_soc1: titolo_socio = st.text_input("Titolo", value="Arch.")
-        with c_soc2: socio_nome = st.selectbox("Socio Firmatario", sorted(list(soci_data.keys())), index=2)
-        
+        with c_soc2: 
+            lista_nomi = sorted(list(soci_data.keys()))
+            socio_nome = st.selectbox("Socio Firmatario", lista_nomi, index=lista_nomi.index("Andrea Lumini"))
         socio_tel = soci_data.get(socio_nome, "")
         socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
         st.markdown("### 2. Dati Cliente")
+        with st.expander("➕ Non trovi il cliente? Aggiungilo qui"):
+            with st.form("form_add_cli"):
+                new_cli_den = st.text_input("Denominazione (Obbligatorio)")
+                new_cli_sede = st.text_area("Indirizzo Sede")
+                if st.form_submit_button("Salva Nuovo Cliente") and new_cli_den:
+                    salva_record({"Denominazione": new_cli_den, "Sede": new_cli_sede}, "Clienti", "Denominazione", "new")
+                    st.success("Cliente aggiunto!"); time.sleep(1); st.rerun()
+
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         indirizzo_trovato = ""
         if cli_sel and not df_cli.empty:
             row_cli = df_cli[df_cli["Denominazione"] == cli_sel]
             if not row_cli.empty:
-                for col_name in ["Sede", "Indirizzo", "Sede Legale"]:
-                    if col_name in row_cli.columns:
-                        val = str(row_cli.iloc[0][col_name])
+                for col in ["Sede", "Indirizzo", "Sede Legale"]:
+                    if col in row_cli.columns:
+                        val = str(row_cli.iloc[0][col])
                         if val and val != "nan": indirizzo_trovato = val; break
         indirizzo_cli = st.text_area("Indirizzo Completo", value=indirizzo_trovato, height=68)
 
-        st.markdown("### 3. Oggetto")
-        oggetto_prev = st.text_area("Inserisci l'oggetto", height=70, placeholder="Es. Rilievo architettonico...")
+        st.markdown("### 3. Oggetto del Preventivo")
+        oggetto_prev = st.text_area("Oggetto", height=70, label_visibility="collapsed", placeholder="Es. Rilievo architettonico...")
 
         st.markdown("### 4. Voci di Costo")
-        if "prev_lines" not in st.session_state:
+        if "prev_lines" not in st.session_state or "Descrizione Estesa" not in st.session_state["prev_lines"].columns:
             st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
 
-        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key=f"edit_{tipo_prev}_final")
+        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key=f"editor_prev_{tipo_prev}_final")
 
         tot_netto = 0.0
         dettagli_list = []
-        for idx, row in edited_df.iterrows():
-            tit = str(row.get("Titolo Attività", ""))
-            desc = str(row.get("Descrizione Estesa", ""))
-            p = float(row.get("Prezzo Totale", 0))
+        for _, row in edited_df.iterrows():
+            tit, desc, p = str(row.get("Titolo Attività", "")), str(row.get("Descrizione Estesa", "")), float(row.get("Prezzo Totale", 0))
             if tit.strip():
                 tot_netto += p
                 dettagli_list.append({"titolo": tit, "descrizione": desc, "prezzo": p})
-
+        
         st.markdown("### 5. Condizioni")
         c_c1, c_c2 = st.columns(2)
         with c_c1: giorni_preavviso = st.number_input("Giorni Preavviso", value=10)
         with c_c2: perc_anticipo = st.number_input("Anticipo %", value=15)
 
-        # Anteprima HTML
+        # Anteprima
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
-        
-        preview_html = f"""<div style="font-family: Calibri, sans-serif; padding: 40px; background: white; border: 1px solid #ddd; max-width: 700px; margin: auto;">
-            <center><img src="{img_src}" width="200"></center>
-            <div style="text-align: right; margin-top: 30px;"><b>Preventivo n. {new_code}</b><br><i>{cli_sel}</i><br>{indirizzo_cli}</div>
-            <p>{data_str}</p>
-            <p><b>Oggetto: {oggetto_prev}</b></p>
-            {"".join([f"<p><b>{i+1}. {d['titolo']}</b><br>{d['descrizione']}<br>Costo: {fmt_num(d['prezzo'])}</p>" for i, d in enumerate(dettagli_list)])}
+        nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
+
+        html_preview = f"""<div style="{CSS_STYLE}"><div class="page">
+            <center><img src="{img_b64}" width="200"></center>
+            <div style="text-align: right; margin-top: 20px;"><b>Preventivo n. {new_code}</b><br><i>{nome_cliente_fmt}</i><br>{indirizzo_cli}</div>
+            <p>{data_str}</p><p><b>Oggetto: {oggetto_prev}</b></p>
+            {"".join([f"<p><b>{i+1}. {d['titolo']}</b>: {fmt_num(d['prezzo'])}</p>" for i, d in enumerate(dettagli_list)])}
             <p><b>Totale: {fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
-            <hr style="border-top: 1px solid #0C3A47; margin-top: 50px;">
-            <p style="text-align: center; color: #0C3A47; font-size: 8pt;">SISMA srl - Piazza Togliatti 40, Scandicci (FI)</p>
-        </div>"""
-        with st.expander("👁️ ANTEPRIMA DOCUMENTO", expanded=True):
-            components.html(preview_html, height=600, scrolling=True)
+        </div></div>"""
+        with st.expander("👁️ ANTEPRIMA", expanded=True): components.html(html_preview, height=600, scrolling=True)
 
         c_save, c_down = st.columns(2)
         with c_save:
             if st.button("💾 SALVA IN ARCHIVIO", type="primary", use_container_width=True):
                 record = {"Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev), "Cliente": cli_sel, "Oggetto": oggetto_prev, "Totale Lordo": tot_netto, "Stato": stato_prev, "Dati_JSON": json.dumps(dettagli_list)}
                 salva_record(record, "Preventivi", "Codice", "new")
-                st.success("Preventivo salvato!")
+                st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
+                st.success("Salvato!"); time.sleep(1); st.rerun()
 
         with c_down:
-            docx_buffer = genera_docx_sisma(new_code, cli_sel, indirizzo_cli, data_str, oggetto_prev, dettagli_list, fmt_num(tot_netto), formatta_prezzo_testuale(tot_netto), socio_firma_completo, socio_tel, giorni_preavviso, perc_anticipo)
-            st.download_button(label="📥 SCARICA IN FORMATO WORD (.docx)", data=docx_buffer, file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            docx_buf = genera_docx_sisma(new_code, nome_cliente_fmt, indirizzo_cli, data_str, oggetto_prev, dettagli_list, fmt_num(tot_netto), formatta_prezzo_testuale(tot_netto), socio_firma_completo, socio_tel, giorni_preavviso, perc_anticipo)
+            st.download_button("📥 SCARICA WORD (.docx)", data=docx_buf, file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
     with tab_arch:
-        # Codice archivio esistente...
+        # Qui metti la tua logica di visualizzazione archivio esistente
         pass
 
 # --- 8. ROUTING ---
@@ -2126,6 +2103,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
