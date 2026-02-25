@@ -1801,7 +1801,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
         
-# --- 7. GESTIONE PREVENTIVI (LAYOUT DEFINITIVO SISMA) ---
+# --- 7. GESTIONE PREVENTIVI (LAYOUT SISMA - FIX DEFINITIVO) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1813,25 +1813,18 @@ def render_preventivi_page():
     import pandas as pd
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
+    st.markdown("---")
 
-    # === CSS PER WORD E ANTEPRIMA ===
+    # CSS OTTIMIZZATO: Rimosso background grigio e ombre per evitare sporcizia nel file Word
     CSS_STYLE = """
-        body { font-family: 'Calibri', sans-serif; font-size: 11pt; }
-        @page Section1 { 
-            size: 595.3pt 841.9pt; 
-            margin: 70.85pt 70.85pt 70.85pt 70.85pt; 
-            mso-header-margin: 35.4pt; 
-            mso-footer-margin: 35.4pt; 
-            mso-header: h1; 
-            mso-footer: f1; 
-        }
-        div.Section1 { page: Section1; }
-        table { border: none; border-collapse: collapse; mso-border-alt: none; }
-        td { border: none; mso-border-alt: none; }
-        .footer-text { font-size: 8pt; color: #0C3A47; }
+        body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; }
+        .page { background-color: white; }
+        table { border-collapse: collapse; border: none; width: 100%; }
+        td { border: none; padding: 0; vertical-align: top; }
+        .footer-line { border-top: 1px solid #0C3A47; padding-top: 10px; color: #0C3A47; font-size: 8pt; }
     """
 
-    # --- FUNZIONI HELPER (TUE ORIGINALI) ---
+    # --- FUNZIONI DI SUPPORTO (TUE ORIGINALI) ---
     def numero_a_lettere(n):
         if n == 0: return "zero"
         numeri = {1: "uno", 2: "due", 3: "tre", 4: "quattro", 5: "cinque", 6: "sei", 7: "sette", 8: "otto", 9: "nove", 10: "dieci", 11: "undici", 12: "dodici", 13: "tredici", 14: "quattordici", 15: "quindici", 16: "sedici", 17: "diciassette", 18: "diciotto", 19: "diciannove", 20: "venti", 30: "trenta", 40: "quaranta", 50: "cinquanta", 60: "sessanta", 70: "settanta", 80: "ottanta", 90: "novanta"}
@@ -1878,27 +1871,30 @@ def render_preventivi_page():
         except: return None
         return None
 
-    # --- INPUT DATI (TUOI ORIGINALI) ---
+    # --- LOGICA INPUT ---
     tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
-    new_code = "PR-2024/001" # Esempio per brevità
+    new_code = "PR-2026/001" # Qui andrà la tua logica di generazione codice
     
-    c1, c2 = st.columns(2)
-    data_prev = c1.date_input("Data", value=date.today())
+    c1, c2, c3 = st.columns(3)
+    data_prev = c1.date_input("Data Emissione", value=date.today())
     luogo_data = c2.text_input("Luogo", value="Scandicci")
     
-    socio_nome = st.selectbox("Socio Firmatario", ["Andrea Lumini", "Stefano Bertocci", "Marco Repole"])
-    cli_sel = st.text_input("Cliente", value="Spett.le Cliente")
-    indirizzo_cli = st.text_area("Indirizzo Cliente")
-    oggetto_prev = st.text_area("Oggetto Preventivo")
+    soci_data = {"Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807", "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378", "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285", "Giovanni Pancani": "+39 3355719188"}
+    socio_nome = st.selectbox("Socio Firmatario", sorted(list(soci_data.keys())), index=2)
+    socio_tel = soci_data.get(socio_nome, "")
+
+    df_cli = carica_dati("Clienti")
+    cli_sel = st.selectbox("Seleziona Cliente", [""] + sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else [])
+    indirizzo_cli = st.text_area("Indirizzo Completo")
+    oggetto_prev = st.text_area("Oggetto")
 
     if "prev_lines" not in st.session_state:
-        st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "Rilievo", "Descrizione Estesa": "Descrizione...", "Prezzo Totale": 1000.0}])
-    
+        st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
     edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True)
+
     tot_netto = edited_df["Prezzo Totale"].sum()
-    
-    giorni_preavviso = 10
-    perc_anticipo = 15
+    giorni_preavviso = st.number_input("Giorni Preavviso", value=10)
+    perc_anticipo = st.number_input("Anticipo %", value=15)
 
     # --- COSTRUZIONE HTML ---
     mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -1908,55 +1904,73 @@ def render_preventivi_page():
     html_voci = ""
     for i, v in enumerate(edited_df.to_dict('records'), 1):
         if v['Titolo Attività']:
-            html_voci += f"""<div style='margin-bottom:15pt;'><b>{i}. {v['Titolo Attività']}</b><br>{v['Descrizione Estesa']}<br><b>Costo: {fmt_num(v['Prezzo Totale'])} ({formatta_prezzo_testuale(v['Prezzo Totale'])} euro)</b></div>"""
+            html_voci += f"""
+            <div style="margin-bottom: 20px;">
+                <p style="margin:0;"><b>{i}. {v['Titolo Attività']}</b></p>
+                <p style="text-align:justify; margin:5px 0;">{v['Descrizione Estesa']}</p>
+                <p style="margin:0;"><b>Costo: {fmt_num(v['Prezzo Totale'])} ({formatta_prezzo_testuale(v['Prezzo Totale'])} euro)</b></p>
+            </div>"""
 
     full_html = f"""
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><style>{CSS_STYLE}</style></head>
+    <head><meta charset="utf-8"><style>{CSS_STYLE}</style></head>
     <body>
-    <div class="Section1">
-        
-        <div style='mso-element:header' id=h1>
-            <p style='text-align:center; margin:0;'><img width=250 src="{img_src}"></p>
+    <div class="page">
+        <div style="text-align:center; margin-bottom:30px;">
+            <img src="{img_src}" style="width:450px;">
         </div>
 
-        <div style='text-align:right;'>
-            <p><b>Preventivo n. {new_code}</b></p>
-            <p><i>{cli_sel}</i><br>{indirizzo_cli}</p>
-        </div>
-        <p>{data_str}</p>
-        <p><b>Oggetto: {oggetto_prev}</b></p>
-        <p>Spett.le {cli_sel},</p>
-        <p>come da contatti intercorsi... di seguito riportiamo il dettaglio:</p>
-        
-        {html_voci}
-        
-        <p>Totale: <b>{fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
-
-        <div style='font-size:10pt;'>
-            <b>Note e Condizioni:</b>
-            <ul>
-                <li>IVA ESCLUSA.</li>
-                <li>Preavviso minimo di giorni {giorni_preavviso}.</li>
-                <li>Anticipo del {perc_anticipo}%.</li>
-            </ul>
-        </div>
-
-        <table style='width:100%; margin-top:40pt; border:none;' border='0' cellspacing='0'>
+        <table style="margin-bottom:30px;">
             <tr>
-                <td style='width:50%; border:none;'><b>Per Sisma SRL</b><br>In fede,<br><br><br><b>{socio_nome}</b></td>
-                <td style='width:50%; text-align:right; border:none;'><b>Per accettazione</b><br><br><br>Data: ........ Firma: ........</td>
+                <td style="width:50%;"></td>
+                <td style="width:50%; text-align:right;">
+                    <p style="font-weight:bold; font-size:12pt; margin:0;">Preventivo n. {new_code}</p>
+                    <p style="margin:15px 0 0 0; font-style:italic;">{cli_sel}</p>
+                    <p style="margin:0;">{indirizzo_cli.replace(chr(10), '<br>')}</p>
+                </td>
             </tr>
         </table>
 
-        <div style='mso-element:footer' id=f1>
-            <table style='width:100%; border-top:1pt solid #0C3A47;' border='0' cellspacing='0'>
+        <p>{data_str}</p>
+        <p><b>Oggetto: {oggetto_prev}</b></p>
+        
+        <p>Spett.le {cli_sel},</p>
+        <p style="text-align:justify;">come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività:</p>
+        
+        <div style="margin:20px 0;">{html_voci}</div>
+        
+        <p>Per un costo complessivo di: <b>{fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
+
+        <div style="font-size:10pt; text-align:justify; margin-top:30px;">
+            <p><b>Note e Condizioni:</b></p>
+            <ul style="padding-left:20px;">
+                <li>Il presente preventivo si intende <b>IVA ESCLUSA</b>.</li>
+                <li>Inizio lavori con preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b>.</li>
+                <li>Anticipo richiesto: <b>{perc_anticipo}%</b>.</li>
+                <li>SISMA srl si riserva il diritto di utilizzare gli elaborati per scopi autopromozionali.</li>
+            </ul>
+        </div>
+
+        <table style="width:100%; margin-top:50px;">
+            <tr>
+                <td style="width:50%;">
+                    <p style="margin-bottom:50px;"><b>Per Sisma SRL</b><br>In fede,</p>
+                    <p style="margin:0;"><b>Arch. {socio_nome}</b></p>
+                    <p style="margin:0; font-size:10pt;">{socio_tel}</p>
+                </td>
+                <td style="width:50%; text-align:right;">
+                    <p style="margin-bottom:50px;"><b>Per accettazione</b></p>
+                    <p style="margin:0;">Data: .................... Firma: ....................</p>
+                </td>
+            </tr>
+        </table>
+
+        <div class="footer-line" style="margin-top:50px;">
+            <p style="text-align:center; font-weight:bold; margin:0 0 5px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
+            <table>
                 <tr>
-                    <td style='text-align:center; font-weight:bold;' colspan='2' class='footer-text'>SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</td>
-                </tr>
-                <tr>
-                    <td class='footer-text'>sede: Piazza Togliatti, 40 – Scandicci (FI)</td>
-                    <td style='text-align:right;' class='footer-text'>e-mail: info@sisma-srl.com</td>
+                    <td style="font-size:8pt;"><b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI)<br><b>C.F. | P.IVA:</b> 06557660484</td>
+                    <td style="text-align:right; font-size:8pt;"><b>e-mail:</b> info@sisma-srl.com<br><b>website:</b> www.sisma-srl.com</td>
                 </tr>
             </table>
         </div>
@@ -1965,10 +1979,16 @@ def render_preventivi_page():
     </html>
     """
 
-    with st.expander("👁️ ANTEPRIMA DOCUMENTO", expanded=True):
+    with st.expander("👁️ ANTEPRIMA", expanded=True):
         components.html(full_html, height=800, scrolling=True)
 
-    st.download_button("📥 SCARICA PREVENTIVO (.doc)", data=full_html, file_name=f"Preventivo_{new_code}.doc", mime="application/msword")
+    st.download_button(
+        label="📥 SCARICA PREVENTIVO (.docx)",
+        data=full_html,
+        file_name=f"Preventivo_{new_code.replace('/', '_')}.doc",
+        mime="application/vnd.ms-word", # MIME corretto per Word
+        use_container_width=True
+    )
 
 # --- 8. ROUTING ---
 with st.sidebar:
@@ -1995,6 +2015,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
