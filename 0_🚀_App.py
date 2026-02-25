@@ -1801,7 +1801,7 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
         
-# --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
+# # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
     import textwrap
     import streamlit.components.v1 as components
@@ -1811,6 +1811,12 @@ def render_preventivi_page():
     import time
     from datetime import date
     import pandas as pd
+    import io
+    
+    # Import per la generazione reale del file Word
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1867,7 +1873,7 @@ def render_preventivi_page():
         testo_intero = numero_a_lettere(intero)
         return f"{testo_intero}/{decimali:02d}"
 
-    # Helper per ID univoco (Aggiunto INTEGRATO)
+    # Helper per ID univoco
     def get_next_prev_id(tipo):
         prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC", "INTEGRATO": "PR-INT"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
@@ -1884,18 +1890,106 @@ def render_preventivi_page():
 
     fmt_num = lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
+    # Gestione Logo
     @st.cache_data(show_spinner=False) 
-    def get_default_logo_base64():
+    def get_logo_content():
         file_id = "1wboY-ugQSWk2eSN8PCqPTMHCEz6WL1qC"
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                b64_str = base64.b64encode(response.content).decode()
-                return f"data:image/png;base64,{b64_str}"
+                return response.content
         except:
             return None
         return None
+
+    logo_bytes = get_logo_content()
+    img_src = f"data:image/png;base64,{base64.b64encode(logo_bytes).decode()}" if logo_bytes else ""
+
+    # --- FUNZIONE GENERAZIONE DOCX ---
+    def genera_docx_sisma(new_code, nome_cliente, indirizzo_cli, data_str, oggetto, dettagli, totale_n, totale_t, socio_firma, socio_tel, giorni, anticipo):
+        doc = Document()
+        section = doc.sections[0]
+        
+        # Margini standard
+        section.top_margin = Inches(0.7)
+        section.bottom_margin = Inches(0.8)
+
+        # 1. INTESTAZIONE (HEADER) - Logo
+        header = section.header
+        h_para = header.paragraphs[0]
+        h_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if logo_bytes:
+            run_h = h_para.add_run()
+            run_h.add_picture(io.BytesIO(logo_bytes), width=Inches(2.5))
+
+        # 2. PIÈ DI PAGINA (FOOTER) - Dati Aziendali
+        footer = section.footer
+        f_para = footer.paragraphs[0]
+        f_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Linea colorata
+        run_line = f_para.add_run("__________________________________________________________________\n")
+        run_line.font.color.rgb = RGBColor(12, 58, 71) # Colore #0C3A47
+
+        run_f1 = f_para.add_run("SISMA – Sistemi Integrati di Monitoraggio Architettonico srl\n")
+        run_f1.bold = True
+        run_f1.font.size = Pt(8)
+        run_f1.font.color.rgb = RGBColor(12, 58, 71)
+        
+        run_f2 = f_para.add_run("sede: Piazza Togliatti, 40 – Scandicci (FI) – 50018 | C.F. | P.IVA: 06557660484\ne-mail: info@sisma-srl.com | PEC: sisma2015@pec.cgn.it | website: www.sisma-srl.com")
+        run_f2.font.size = Pt(8)
+        run_f2.font.color.rgb = RGBColor(12, 58, 71)
+
+        # 3. CORPO DEL TESTO
+        # Numero preventivo a destra
+        p_num = doc.add_paragraph()
+        p_num.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p_num.add_run(f"Preventivo n. {new_code}").bold = True
+
+        # Cliente a destra
+        p_cli = doc.add_paragraph()
+        p_cli.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        run_cli = p_cli.add_run(f"\nSpett.le\n{nome_cliente}\n{indirizzo_cli}")
+        run_cli.italic = True
+
+        # Data e Oggetto
+        doc.add_paragraph(f"\n{data_str}")
+        p_obj = doc.add_paragraph()
+        p_obj.add_run(f"Oggetto: {oggetto}").bold = True
+
+        doc.add_paragraph(f"\nSpett.le {nome_cliente},\ncome da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:")
+
+        # Elenco voci
+        for i, item in enumerate(dettagli, 1):
+            p_titolo = doc.add_paragraph(style='Normal')
+            p_titolo.add_run(f"\n{i}. {item['titolo']}").bold = True
+            doc.add_paragraph(item['descrizione'])
+            doc.add_paragraph(f"Costo: {fmt_num(item['prezzo'])} ({formatta_prezzo_testuale(item['prezzo'])} euro)").bold = True
+
+        # Totale
+        p_fine = doc.add_paragraph(f"\nPer un costo complessivo di: ")
+        p_fine.add_run(f"{totale_n} ({totale_t} euro)").bold = True
+
+        # Condizioni (brevi)
+        doc.add_paragraph(f"\nIl presente preventivo si intende IVA ESCLUSA. Preavviso minimo di giorni {giorni} e anticipo del {anticipo}%.")
+
+        # Firme
+        table = doc.add_table(rows=1, cols=2)
+        table.width = Inches(6.0)
+        c1, c2 = table.rows[0].cells
+        
+        p1 = c1.paragraphs[0]
+        p1.add_run(f"\n\nPer Sisma SRL\nIn fede,\n\n{socio_firma}\n{socio_tel}")
+        
+        p2 = c2.paragraphs[0]
+        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p2.add_run(f"\n\nPer accettazione\n\nData: .........................\nFirma: .........................")
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
 
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
@@ -1928,12 +2022,9 @@ def render_preventivi_page():
         c_soc1, c_soc2 = st.columns([1, 3])
         
         soci_data = {
-            "Andrea Arrighetti": "+39 3394298603",
-            "Stefano Bertocci": "+39 3357033807",
-            "Andrea Lumini": "+39 3381081115",
-            "Lorenzo Marasco": "+39 3316458378",
-            "Giovanni Minutoli": "+39 3385854417",
-            "Marco Repole": "+39 3478835285",
+            "Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807",
+            "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378",
+            "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285",
             "Giovanni Pancani": "+39 3355719188"
         }
         
@@ -1941,33 +2032,12 @@ def render_preventivi_page():
             titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
         with c_soc2:
             lista_nomi_soci = sorted(list(soci_data.keys()))
-            socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=lista_nomi_soci.index("Andrea Lumini") if "Andrea Lumini" in lista_nomi_soci else 0)
+            socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=0)
         
         socio_tel = soci_data.get(socio_nome, "")
         socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
         st.markdown("### 2. Dati Cliente")
-        with st.expander("➕ Non trovi il cliente? Aggiungilo qui"):
-            with st.form("form_add_cli"):
-                new_cli_den = st.text_input("Denominazione (Obbligatorio)")
-                new_cli_sede = st.text_area("Indirizzo Sede")
-                new_cli_piva = st.text_input("P.IVA / C.F.")
-                new_cli_email = st.text_input("Email / PEC")
-                if st.form_submit_button("Salva Nuovo Cliente"):
-                    if new_cli_den:
-                        nuovo_record = {
-                            "Denominazione": new_cli_den,
-                            "Sede": new_cli_sede,
-                            "P.IVA": new_cli_piva,
-                            "Email": new_cli_email
-                        }
-                        salva_record(nuovo_record, "Clienti", "Denominazione", "new")
-                        st.success(f"Cliente '{new_cli_den}' aggiunto! La pagina si ricaricherà...")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Inserisci almeno la Denominazione.")
-
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
         indirizzo_trovato = ""
         if cli_sel and not df_cli.empty:
@@ -1979,312 +2049,76 @@ def render_preventivi_page():
                         if val and val != "nan":
                             indirizzo_trovato = val
                             break
-        indirizzo_cli = st.text_area("Indirizzo Completo (Autocompilato)", value=indirizzo_trovato, height=68)
+        indirizzo_cli = st.text_area("Indirizzo Completo", value=indirizzo_trovato, height=68)
 
         st.markdown("### 3. Oggetto del Preventivo")
-        oggetto_prev = st.text_area("Inserisci l'oggetto del preventivo", height=70, label_visibility="collapsed", placeholder="Es. Rilievo architettonico immobile via Roma...")
+        oggetto_prev = st.text_area("Oggetto", height=70, placeholder="Es. Rilievo architettonico...")
 
-        # --- SEZIONE 4: VOCI DI COSTO ---
-        st.markdown("### 4. Voci di Costo (Attività)")
-        st.info("💡 Inserisci qui sotto il titolo dell'attività e usa la colonna 'Descrizione Estesa' per il dettaglio lungo.")
-        
-        # FIX: Reset automatico tabella
-        if "prev_lines" not in st.session_state or "Descrizione Estesa" not in st.session_state["prev_lines"].columns:
-            st.session_state["prev_lines"] = pd.DataFrame([
-                {"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}
-            ])
+        st.markdown("### 4. Voci di Costo")
+        if "prev_lines" not in st.session_state:
+            st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
 
-        col_config = {
-            "Titolo Attività": st.column_config.TextColumn("Titolo (es. Acquisizione dati)", width="medium", required=True),
-            "Descrizione Estesa": st.column_config.TextColumn("Descrizione Dettagliata", width="large"),
-            "Prezzo Totale": st.column_config.NumberColumn("Prezzo Totale €", min_value=0.0, step=50.0, format="%.2f"),
-        }
-
-        edited_df = st.data_editor(
-            st.session_state["prev_lines"],
-            num_rows="dynamic",
-            column_config=col_config,
-            use_container_width=True,
-            key=f"editor_prev_{tipo_prev}_v5"
-        )
+        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key=f"edit_{tipo_prev}")
 
         tot_netto = 0.0
         dettagli_list = []
         for idx, row in edited_df.iterrows():
-            try:
-                tit = str(row.get("Titolo Attività", ""))
-                desc = str(row.get("Descrizione Estesa", ""))
-                p = float(row.get("Prezzo Totale", 0))
-                if tit.strip():
-                    tot_netto += p
-                    dettagli_list.append({"titolo": tit, "descrizione": desc, "prezzo": p})
-            except: pass
+            tit = str(row.get("Titolo Attività", ""))
+            desc = str(row.get("Descrizione Estesa", ""))
+            p = float(row.get("Prezzo Totale", 0))
+            if tit.strip():
+                tot_netto += p
+                dettagli_list.append({"titolo": tit, "descrizione": desc, "prezzo": p})
         
-        st.markdown("### 5. Condizioni Contrattuali")
+        st.markdown("### 5. Condizioni")
         col_cond1, col_cond2 = st.columns(2)
-        with col_cond1:
-            giorni_preavviso = st.number_input("Giorni di Preavviso Minimo", min_value=1, value=10, step=1)
-        with col_cond2:
-            perc_anticipo = st.number_input("Percentuale Anticipo (%)", min_value=0, max_value=100, value=15, step=5)
-        
-        # --- GENERAZIONE COMPONENTI HTML (COMUNI) ---
+        with col_cond1: giorni_preavviso = st.number_input("Giorni Preavviso", value=10)
+        with col_cond2: perc_anticipo = st.number_input("Anticipo (%)", value=15)
+
+        # --- ANTEPRIMA HTML (Solo Web) ---
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
-        nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
+        nome_cliente_fmt = cli_sel if cli_sel else "...................."
 
-        html_elenco = ""
-        for i, item in enumerate(dettagli_list, 1):
-            prezzo_num = fmt_num(item['prezzo'])
-            prezzo_text = formatta_prezzo_testuale(item['prezzo'])
-            html_elenco += f"""
-            <div style="margin-bottom: 25px;">
-                <p style="margin: 0; font-size: 11pt;"><b>{i}. {item['titolo']}</b></p>
-                <p style="margin-top: 5px; margin-bottom: 5px; text-align: justify; line-height: 1.4;">{item['descrizione']}</p>
-                <p style="margin: 0; font-weight: bold;">Costo: {prezzo_num} ({prezzo_text} euro)</p>
-            </div>
-            """
+        preview_html = f"""<div style="font-family: Calibri, sans-serif; padding: 40px; background: white; border: 1px solid #ddd;">
+            <center><img src="{img_src}" width="200"></center>
+            <div style="text-align: right; margin-top: 20px;"><b>Preventivo n. {new_code}</b><br><i>{nome_cliente_fmt}</i><br>{indirizzo_cli}</div>
+            <p>{data_str}</p>
+            <p><b>Oggetto: {oggetto_prev}</b></p>
+            <div style="margin-top: 20px;">{"".join([f"<p><b>{i+1}. {d['titolo']}</b>: {fmt_num(d['prezzo'])}</p>" for i, d in enumerate(dettagli_list)])}</div>
+            <p><b>Totale: {fmt_num(tot_netto)} ({formatta_prezzo_testuale(tot_netto)} euro)</b></p>
+        </div>"""
 
-        totale_num = fmt_num(tot_netto)
-        totale_text = formatta_prezzo_testuale(tot_netto)
-        img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
-
-        testo_condizioni = f"""
-            <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
-                <p style="margin-bottom: 5px;"><b>Note e Condizioni:</b></p>
-                <ul style="padding-left: 20px; margin-top: 0; margin-bottom: 0;">
-                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l'aliquota prevista dalla legge alla data della fatturazione.</li>
-                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d'opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
-                    <li style="margin-bottom: 5px;">Nel presente preventivo non sono altresì conteggiate eventuali opere provvisionali che si rendessero necessarie per la realizzazione del rilievo. Qualora se ne dovesse riscontrare la necessità tali opere dovranno essere contabilizzate a parte o realizzate direttamente dalla Committenza.</li>
-                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all'esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
-                    <li style="margin-bottom: 5px;">Per ottimizzare le tempistiche previste per le varie attività si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito di studio e degli ambienti interni.</li>
-                    <li style="margin-bottom: 5px;">Qualora venga accettato, il presente preventivo, dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
-                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell'anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
-                    <li>La Società SISMA srl, qualora venisse incaricata per i sopracitati servizi, si riserverà il diritto di utilizzare gli elaborati digitali sviluppati nel corso del progetto per scopi autopromozionali, fatti ovviamente salvo i diritti della Proprietà del Bene.</li>
-                </ul>
-                <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
-            </div>
-        """
-
-        # =========================================================
-        # 1. TEMPLATE HTML PER MS WORD (Il file scaricato)
-        # =========================================================
-        word_html = f"""<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; }}
-        @page WordSection1 {{
-            size: 595.3pt 841.9pt; 
-            margin: 70.85pt 70.85pt 70.85pt 70.85pt; 
-            mso-header-margin: 35.4pt; 
-            mso-footer-margin: 35.4pt; 
-            mso-header: h1; 
-            mso-footer: f1; 
-        }}
-        div.WordSection1 {{ page: WordSection1; }}
-        p {{ margin: 0; padding: 0; }}
-    </style>
-</head>
-<body>
-<div class="WordSection1">
-    <div style="text-align: right; margin-bottom: 10pt;">
-        <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
-    </div>
-    <div style="text-align: right; margin-top: 20pt;">
-        <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
-        <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
-    </div>
-    <p style="margin-top: 30pt; margin-bottom: 15pt; text-align: left;">{data_str}</p>
-    
-    <div style="margin-bottom: 20pt;">
-        <p style="margin: 0;"><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
-    </div>
-    
-    <p style="margin-bottom: 15pt;">Spett.le {nome_cliente_fmt},<br>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
-    
-    <div style="margin-top: 20pt; margin-bottom: 20pt;">
-        {html_elenco}
-    </div>
-    <div style="margin-bottom: 30pt;">
-        <p style="margin: 0;">Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
-    </div>
-
-    {testo_condizioni}
-
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 50pt; border: none; font-family: 'Calibri', sans-serif; font-size: 11pt;">
-        <tr>
-            <td width="50%" valign="bottom" style="text-align: left;">
-                <p style="margin: 0 0 60pt 0;"><b>Per Sisma SRL</b><br>In fede,</p>
-                <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
-                <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
-            </td>
-            <td width="50%" valign="bottom" style="text-align: right;">
-                <p style="margin: 0 0 60pt 0;"><b>Per accettazione</b></p>
-                <p style="margin: 0;">
-                    <span style="margin-right: 10px;">Data: ....................</span>
-                    <span>Firma: ....................</span>
-                </p>
-            </td>
-        </tr>
-    </table>
-</div>
-
-<table style="display:none; mso-hide:all;">
-    <tr>
-        <td>
-            <div style="mso-element:header" id="h1">
-                <p style="text-align:center; margin:0; padding:0;">
-                    <img src="{img_src}" width="250" alt="Logo Sisma">
-                </p>
-            </div>
-        </td>
-        <td>
-            <div style="mso-element:footer" id="f1">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-top: 1px solid #0C3A47; font-family: 'Calibri', sans-serif; font-size: 8pt; color: #0C3A47; margin:0;">
-                    <tr>
-                        <td colspan="2" align="center" style="font-weight: bold; padding-top:10pt; padding-bottom: 5pt;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</td>
-                    </tr>
-                    <tr>
-                        <td align="left" valign="top">
-                            <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
-                            <b>C.F. | P.IVA:</b> 06557660484
-                        </td>
-                        <td align="right" valign="top">
-                            <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
-                            <b>website:</b> www.sisma-srl.com
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </td>
-    </tr>
-</table>
-</body>
-</html>"""
-
-
-        # =========================================================
-        # 2. TEMPLATE HTML PER ANTEPRIMA WEB (Visibile sull'app)
-        # =========================================================
-        preview_html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }}
-        .page {{ max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
-    </style>
-</head>
-<body>
-<div class="page">
-    <div style="text-align: center; margin-bottom: 30px;">
-        <img src="{img_src}" width="250" alt="Logo Sisma">
-    </div>
-    <div style="margin-bottom: 30px;">
-        <div style="text-align: right; margin-bottom: 10px;">
-            <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
-        </div>
-        <div style="text-align: right; margin-top: 20px;">
-            <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
-            <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
-        </div>
-        <p style="margin-top: 40px; margin-bottom: 10px; text-align: left;">{data_str}</p>
-    </div>
-    <div style="margin-bottom: 20px;">
-        <p style="margin: 0;"><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
-    </div>
-    <p style="margin-bottom: 10px;">Spett.le {nome_cliente_fmt},<br>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
-    
-    <div style="margin-top: 30px; margin-bottom: 30px;">
-        {html_elenco}
-    </div>
-    <div style="margin-bottom: 30px;">
-        <p style="margin: 0;">Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
-    </div>
-
-    {testo_condizioni}
-
-    <div style="margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end;">
-        <div style="width: 45%;">
-            <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
-            <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
-            <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
-        </div>
-        <div style="width: 45%; text-align: right;">
-            <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
-            <div style="margin: 0;">
-                 <span style="margin-right: 10px;">Data: ....................</span>
-                 <span>Firma: ....................</span>
-            </div>
-        </div>
-    </div>
-    <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
-        <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
-        <div style="display: flex; justify-content: space-between;">
-            <div style="text-align: left;">
-                <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
-                <b>C.F. | P.IVA:</b> 06557660484
-            </div>
-            <div style="text-align: right;">
-                <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
-                <b>website:</b> www.sisma-srl.com
-            </div>
-        </div>
-    </div>
-</div>
-</body>
-</html>"""
-
-        # Mostriamo l'anteprima (usando il preview_html)
-        with st.expander("👁️ ANTEPRIMA DOCUMENTO (Clicca per espandere)", expanded=True):
-            components.html(textwrap.dedent(preview_html), height=800, scrolling=True)
+        with st.expander("👁️ ANTEPRIMA", expanded=True):
+            components.html(preview_html, height=500, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        c_save, c_down = st.columns([1, 1])
+        c_save, c_down = st.columns(2)
+        
         with c_save:
             if st.button("💾 SALVA IN ARCHIVIO", type="primary", use_container_width=True):
-                if not cli_sel or not oggetto_prev:
-                    st.error("Inserisci Cliente e Oggetto!")
-                elif tot_netto == 0:
-                    st.error("Inserisci almeno una voce.")
-                else:
-                    record = {
-                        "Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev),
-                        "Cliente": cli_sel, "Oggetto": oggetto_prev,
-                        "Totale Netto": tot_netto, "Totale Lordo": tot_netto, "Stato": stato_prev,
-                        "Dati_JSON": json.dumps(dettagli_list)
-                    }
-                    salva_record(record, "Preventivi", "Codice", "new")
-                    st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
-                    st.success(f"Preventivo {new_code} salvato!")
-                    time.sleep(1.5)
-                    st.rerun()
+                record = {"Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev), "Cliente": cli_sel, "Oggetto": oggetto_prev, "Totale Lordo": tot_netto, "Stato": stato_prev}
+                salva_record(record, "Preventivi", "Codice", "new")
+                st.success("Salvato!")
 
         with c_down:
-            # Scarichiamo il file passandogli il word_html formattato per MS Office
+            # Trigger della generazione DOCX
+            docx_buffer = genera_docx_sisma(
+                new_code, nome_cliente_fmt, indirizzo_cli, data_str, oggetto_prev,
+                dettagli_list, fmt_num(tot_netto), formatta_prezzo_testuale(tot_netto),
+                socio_firma_completo, socio_tel, giorni_preavviso, perc_anticipo
+            )
+            
             st.download_button(
-                label="📥 SCARICA IN FORMATO WORD (.doc)", 
-                data=textwrap.dedent(word_html),
-                file_name=f"Preventivo_{new_code.replace('/', '_')}.doc", 
-                mime="application/msword", 
+                label="📥 SCARICA IN FORMATO WORD (.docx)", 
+                data=docx_buffer,
+                file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", 
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
                 use_container_width=True
             )
-            st.caption("ℹ️ L'immagine verrà posizionata nell'Intestazione (Header) di Word, e il bordo/indirizzi in fondo nel Piè di Pagina (Footer). Fai doppio clic sul bordo della pagina su Word per visualizzarli o modificarli.")
 
     with tab_arch:
-        df_prev = carica_dati("Preventivi")
-        if df_prev.empty:
-            st.info("Archivio vuoto.")
-        else:
-            c_f1, c_f2 = st.columns(2)
-            txt_search = c_f1.text_input("🔍 Cerca preventivo")
-            if txt_search:
-                df_prev = df_prev[df_prev.astype(str).apply(lambda x: x.str.contains(txt_search, case=False)).any(axis=1)]
-            st.dataframe(df_prev[["Codice", "Data", "Cliente", "Oggetto", "Totale Lordo", "Stato"]], use_container_width=True, hide_index=True)
-            c_del1, c_del2 = st.columns([3, 1])
-            sel_del = c_del1.selectbox("Seleziona da eliminare:", [""] + df_prev["Codice"].tolist())
-            if c_del2.button("Elimina", type="primary"):
-                if sel_del: elimina_record(sel_del, "Preventivi", "Codice")
+        st.info("Area Archivio")
 
 # --- 8. ROUTING ---
 with st.sidebar:
@@ -2311,6 +2145,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
