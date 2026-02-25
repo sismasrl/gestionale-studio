@@ -1801,28 +1801,25 @@ def render_organigramma():
         </div>
         """, unsafe_allow_html=True)
         
-import streamlit as st
-import textwrap
-import streamlit.components.v1 as components
-import base64
-import requests 
-import json
-import time
-from datetime import date
-import pandas as pd
-from io import BytesIO
-
-# Import necessari per Word
-from docx import Document
-from docx.shared import Pt, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-
 # --- 7. GESTIONE PREVENTIVI (LAYOUT FILE WORD SISMA) ---
 def render_preventivi_page():
+    import textwrap
+    import streamlit.components.v1 as components
+    import base64
+    import requests 
+    import json
+    import time
+    from datetime import date
+    import pandas as pd
+    from io import BytesIO
+    from docx import Document
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     st.markdown("<h2 style='text-align: center;'>GESTIONE PREVENTIVI</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # === DEFINIZIONE STILE CSS PER ANTEPRIMA ===
+    # === DEFINIZIONE STILE CSS (Metodo Sicuro) ===
     css_lines = [
         "body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000000; line-height: 1.3; margin: 0; padding: 0; background-color: #f4f4f4; }",
         ".page { max-width: 800px; margin: 20px auto; background-color: white; padding: 50px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }"
@@ -1859,6 +1856,7 @@ def render_preventivi_page():
                 if resto != 0: ris += converti_centinaia(resto)
                 return ris
             return ""
+
         def converti_mille(num):
             if num < 1000: return converti_centinaia(num)
             k = num // 1000
@@ -1867,6 +1865,7 @@ def render_preventivi_page():
             if k > 1: ris = converti_centinaia(k) + "mila"
             if resto != 0: ris += converti_centinaia(resto)
             return ris
+            
         try:
             intero = int(n)
             return converti_mille(intero)
@@ -1879,15 +1878,11 @@ def render_preventivi_page():
         testo_intero = numero_a_lettere(intero)
         return f"{testo_intero}/{decimali:02d}"
 
+    # Helper per ID univoco (AGGIUNTO INTEGRATO)
     def get_next_prev_id(tipo):
         prefix_map = {"RILIEVO": "PR-RIL", "ARCHEOLOGIA": "PR-ARC", "INTEGRATO": "PR-INT"}
         prefix_str = f"{prefix_map.get(tipo, 'PR')}-{date.today().year}/"
-        # Nota: Assumi che carica_dati sia definita globalmente nel tuo progetto
-        try:
-            df_prev = carica_dati("Preventivi")
-        except:
-            return f"{prefix_str}001"
-            
+        df_prev = carica_dati("Preventivi")
         max_n = 0
         if not df_prev.empty and "Codice" in df_prev.columns:
             for c in df_prev["Codice"].astype(str):
@@ -1909,172 +1904,366 @@ def render_preventivi_page():
             if response.status_code == 200:
                 b64_str = base64.b64encode(response.content).decode()
                 return f"data:image/png;base64,{b64_str}"
-        except: return None
+        except:
+            return None
         return None
 
-    # --- FUNZIONE CREAZIONE DOCX ---
-    def genera_docx_sisma(dati):
-        doc = Document()
-        # Impostazione Margini (Stretto)
-        for section in doc.sections:
-            section.top_margin = Cm(1.5)
-            section.bottom_margin = Cm(1.5)
-            section.left_margin = Cm(2)
-            section.right_margin = Cm(2)
-
-        # Intestazione Testuale (Simula Logo)
-        header = doc.add_paragraph()
-        header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_h = header.add_run("SISMA s.r.l.")
-        run_h.bold = True
-        run_h.font.size = Pt(16)
-
-        # Codice e Cliente
-        p_info = doc.add_paragraph()
-        p_info.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p_info.add_run(f"Preventivo n. {dati['codice']}").bold = True
-        
-        p_cli = doc.add_paragraph()
-        p_cli.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p_cli.add_run(f"\n{dati['cliente']}\n{dati['indirizzo']}").italic = True
-
-        # Data e Oggetto
-        doc.add_paragraph(f"\n{dati['data_testo']}")
-        p_obj = doc.add_paragraph()
-        p_obj.add_run(f"Oggetto: {dati['oggetto']}").bold = True
-
-        doc.add_paragraph(f"\nSpett.le {dati['cliente']},")
-        doc.add_paragraph("come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività:")
-
-        # Elenco Attività
-        for i, item in enumerate(dati['dettagli'], 1):
-            p_tit = doc.add_paragraph()
-            p_tit.add_run(f"{i}. {item['titolo']}").bold = True
-            doc.add_paragraph(item['descrizione']).alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            p_pre = doc.add_paragraph()
-            p_pre.add_run(f"Costo: {fmt_num(item['prezzo'])} ({formatta_prezzo_testuale(item['prezzo'])} euro)").bold = True
-
-        # Totale
-        p_tot = doc.add_paragraph()
-        p_tot.add_run(f"\nPer un costo complessivo di: {dati['tot_num']} ({dati['tot_txt']} euro)").bold = True
-
-        # Note finali
-        doc.add_paragraph("\nNote e Condizioni:").bold = True
-        note = [
-            "Il presente preventivo si intende IVA ESCLUSA.",
-            f"Preavviso minimo di giorni {dati['giorni']} (solari).",
-            f"Pagamento anticipo nella misura del {dati['perc']}%."
-        ]
-        for nota in note:
-            doc.add_paragraph(nota, style='List Bullet')
-
-        # Firme
-        table = doc.add_table(rows=1, cols=2)
-        cells = table.rows[0].cells
-        cells[0].paragraphs[0].add_run(f"\nPer Sisma SRL\nIn fede,\n\n{dati['socio']}\n{dati['tel']}").bold = True
-        cells[1].paragraphs[0].add_run("\nPer accettazione\n\nData: ....................\nFirma: ....................").bold = True
-
-        target = BytesIO()
-        doc.save(target)
-        target.seek(0)
-        return target
-
-    # --- INTERFACCIA STREAMLIT ---
     tab_new, tab_arch = st.tabs(["NUOVO PREVENTIVO", "ARCHIVIO"])
 
+    # --- TAB 1: CREAZIONE ---
     with tab_new:
-        tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
-        new_code = get_next_prev_id(tipo_prev)
-        st.metric("Codice Documento", new_code)
+        st.info("Compila i dati per generare un preventivo su carta intestata SISMA.")
+        
+        c_tipo, c_code = st.columns([1, 1])
+        with c_tipo:
+            tipo_prev = st.radio("TIPOLOGIA:", ["RILIEVO", "ARCHEOLOGIA", "INTEGRATO"], horizontal=True)
+        with c_code:
+            new_code = get_next_prev_id(tipo_prev)
+            st.metric("Codice Documento", new_code)
 
-        # 1. Dati Documento
+        st.markdown("---")
+        
+        df_cli = carica_dati("Clienti")
+        nomi_cli = sorted(df_cli["Denominazione"].unique().tolist()) if not df_cli.empty else []
+
+        st.markdown("### 1. Dati Documento")
         c1, c2, c3 = st.columns([1, 1, 1])
-        data_prev = c1.date_input("Data Emissione", value=date.today())
-        luogo_data = c2.text_input("Luogo", value="Scandicci")
-        stato_prev = c3.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
+        with c1:
+            data_prev = st.date_input("Data Emissione", value=date.today())
+        with c2:
+            luogo_data = st.text_input("Luogo", value="Scandicci")
+        with c3:
+            stato_prev = st.selectbox("Stato", ["BOZZA", "INVIATO", "ACCETTATO", "RIFIUTATO"])
+        
+        st.markdown("**Firma Socio:**")
+        c_soc1, c_soc2 = st.columns([1, 3])
         
         soci_data = {
-            "Andrea Arrighetti": "+39 3394298603", "Stefano Bertocci": "+39 3357033807",
-            "Andrea Lumini": "+39 3381081115", "Lorenzo Marasco": "+39 3316458378",
-            "Giovanni Minutoli": "+39 3385854417", "Marco Repole": "+39 3478835285",
+            "Andrea Arrighetti": "+39 3394298603",
+            "Stefano Bertocci": "+39 3357033807",
+            "Andrea Lumini": "+39 3381081115",
+            "Lorenzo Marasco": "+39 3316458378",
+            "Giovanni Minutoli": "+39 3385854417",
+            "Marco Repole": "+39 3478835285",
             "Giovanni Pancani": "+39 3355719188"
         }
-        c_soc1, c_soc2 = st.columns([1, 3])
-        titolo_socio = c_soc1.text_input("Titolo", value="Arch.")
-        socio_nome = c_soc2.selectbox("Socio Firmatario", sorted(list(soci_data.keys())), index=2)
+        
+        with c_soc1:
+            titolo_socio = st.text_input("Titolo (es. Arch.)", value="Arch.")
+        with c_soc2:
+            lista_nomi_soci = sorted(list(soci_data.keys()))
+            socio_nome = st.selectbox("Socio Firmatario", lista_nomi_soci, index=lista_nomi_soci.index("Andrea Lumini") if "Andrea Lumini" in lista_nomi_soci else 0)
+        
         socio_tel = soci_data.get(socio_nome, "")
-        socio_firma_completo = f"{titolo_socio} {socio_nome}"
+        socio_firma_completo = f"{titolo_socio} {socio_nome}".strip()
 
-        # 2. Dati Cliente (Simulato se manca carica_dati)
-        try:
-            df_cli = carica_dati("Clienti")
-            nomi_cli = sorted(df_cli["Denominazione"].unique().tolist())
-        except:
-            df_cli = pd.DataFrame(); nomi_cli = []
+        st.markdown("### 2. Dati Cliente")
+        with st.expander("➕ Non trovi il cliente? Aggiungilo qui"):
+            with st.form("form_add_cli"):
+                new_cli_den = st.text_input("Denominazione (Obbligatorio)")
+                new_cli_sede = st.text_area("Indirizzo Sede")
+                new_cli_piva = st.text_input("P.IVA / C.F.")
+                new_cli_email = st.text_input("Email / PEC")
+                if st.form_submit_button("Salva Nuovo Cliente"):
+                    if new_cli_den:
+                        nuovo_record = {
+                            "Denominazione": new_cli_den,
+                            "Sede": new_cli_sede,
+                            "P.IVA": new_cli_piva,
+                            "Email": new_cli_email
+                        }
+                        salva_record(nuovo_record, "Clienti", "Denominazione", "new")
+                        st.success(f"Cliente '{new_cli_den}' aggiunto! La pagina si ricaricherà...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Inserisci almeno la Denominazione.")
 
         cli_sel = st.selectbox("Seleziona Cliente", [""] + nomi_cli)
-        indirizzo_cli = st.text_area("Indirizzo Completo", height=68)
+        indirizzo_trovato = ""
+        if cli_sel and not df_cli.empty:
+            row_cli = df_cli[df_cli["Denominazione"] == cli_sel]
+            if not row_cli.empty:
+                for col_name in ["Sede", "Indirizzo", "Sede Legale"]:
+                    if col_name in row_cli.columns:
+                        val = str(row_cli.iloc[0][col_name])
+                        if val and val != "nan":
+                            indirizzo_trovato = val
+                            break
+        indirizzo_cli = st.text_area("Indirizzo Completo (Autocompilato)", value=indirizzo_trovato, height=68)
 
-        # 3. Oggetto e 4. Voci
-        oggetto_prev = st.text_area("Oggetto del preventivo", placeholder="Es. Rilievo architettonico...")
+        st.markdown("### 3. Oggetto del Preventivo")
+        oggetto_prev = st.text_area("Inserisci l'oggetto del preventivo", height=70, label_visibility="collapsed", placeholder="Es. Rilievo architettonico immobile via Roma...")
+
+        # --- SEZIONE 4: VOCI DI COSTO ---
+        st.markdown("### 4. Voci di Costo (Attività)")
+        st.info("💡 Inserisci qui sotto il titolo dell'attività e usa la colonna 'Descrizione Estesa' per il dettaglio lungo.")
         
-        if "prev_lines" not in st.session_state:
-            st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
+        if "prev_lines" not in st.session_state or "Descrizione Estesa" not in st.session_state["prev_lines"].columns:
+            st.session_state["prev_lines"] = pd.DataFrame([
+                {"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}
+            ])
 
-        edited_df = st.data_editor(st.session_state["prev_lines"], num_rows="dynamic", use_container_width=True, key="editor_v4")
+        col_config = {
+            "Titolo Attività": st.column_config.TextColumn("Titolo (es. Acquisizione dati)", width="medium", required=True),
+            "Descrizione Estesa": st.column_config.TextColumn("Descrizione Dettagliata", width="large"),
+            "Prezzo Totale": st.column_config.NumberColumn("Prezzo Totale €", min_value=0.0, step=50.0, format="%.2f"),
+        }
 
-        # Calcoli Totali
-        tot_netto = edited_df["Prezzo Totale"].sum()
-        dettagli_list = [{"titolo": r["Titolo Attività"], "descrizione": r["Descrizione Estesa"], "prezzo": r["Prezzo Totale"]} 
-                         for _, r in edited_df.iterrows() if r["Titolo Attività"]]
+        edited_df = st.data_editor(
+            st.session_state["prev_lines"],
+            num_rows="dynamic",
+            column_config=col_config,
+            use_container_width=True,
+            key=f"editor_prev_{tipo_prev}_v4" 
+        )
 
-        # 5. Condizioni
-        c_cond1, c_cond2 = st.columns(2)
-        giorni_preavviso = c_cond1.number_input("Giorni Preavviso", value=10)
-        perc_anticipo = c_cond2.number_input("Anticipo (%)", value=15)
-
-        # Generazione Testi per Documenti
+        tot_netto = 0.0
+        dettagli_list = []
+        for idx, row in edited_df.iterrows():
+            try:
+                tit = str(row.get("Titolo Attività", ""))
+                desc = str(row.get("Descrizione Estesa", ""))
+                p = float(row.get("Prezzo Totale", 0))
+                if tit.strip():
+                    tot_netto += p
+                    dettagli_list.append({"titolo": tit, "descrizione": desc, "prezzo": p})
+            except: pass
+        
+        st.markdown("### 5. Condizioni Contrattuali")
+        col_cond1, col_cond2 = st.columns(2)
+        with col_cond1:
+            giorni_preavviso = st.number_input("Giorni di Preavviso Minimo", min_value=1, value=10, step=1)
+        with col_cond2:
+            perc_anticipo = st.number_input("Percentuale Anticipo (%)", min_value=0, max_value=100, value=15, step=5)
+        
+        # --- GENERAZIONE HTML (Per Anteprima) ---
         mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         data_str = f"{luogo_data}, {data_prev.day} {mesi[data_prev.month-1]} {data_prev.year}"
+        nome_cliente_fmt = cli_sel.title() if cli_sel else "...................."
+
+        html_elenco = ""
+        for i, item in enumerate(dettagli_list, 1):
+            prezzo_num = fmt_num(item['prezzo'])
+            prezzo_text = formatta_prezzo_testuale(item['prezzo'])
+            html_elenco += f"""
+            <div style="margin-bottom: 25px;">
+                <p style="margin: 0; font-size: 11pt;"><b>{i}. {item['titolo']}</b></p>
+                <p style="margin-top: 5px; margin-bottom: 5px; text-align: justify; line-height: 1.4;">{item['descrizione']}</p>
+                <p style="margin: 0; font-weight: bold;">Costo: {prezzo_num} ({prezzo_text} euro)</p>
+            </div>
+            """
+
         totale_num = fmt_num(tot_netto)
         totale_text = formatta_prezzo_testuale(tot_netto)
+        img_src = get_default_logo_base64() or "https://lh3.googleusercontent.com/d/1yIAVeiPS7dI8wdYkBZ0eyGMvCy6ET2up"
 
-        # --- AZIONI ---
-        st.markdown("---")
-        c_save, c_down = st.columns(2)
-        
+        raw_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                {CSS_STYLE}
+            </style>
+        </head>
+        <body>
+        <div class="page">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <img src="{img_src}" style="max-width: 100%; height: auto; max-height: 120px;" referrerpolicy="no-referrer">
+            </div>
+            <div style="margin-bottom: 30px;">
+                <div style="text-align: right; margin-bottom: 10px;">
+                    <p style="font-weight: bold; font-size: 12pt; margin: 0;">Preventivo n. {new_code}</p>
+                </div>
+                <div style="text-align: right; margin-top: 20px;">
+                    <p style="margin: 0; font-style: italic;">{nome_cliente_fmt}</p>
+                    <p style="margin: 0;">{indirizzo_cli.replace(chr(10), '<br>') if indirizzo_cli else ""}</p>
+                </div>
+                <p style="margin-top: 40px; margin-bottom: 10px; text-align: left;">{data_str}</p>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <p><b>Oggetto: {oggetto_prev if oggetto_prev else "...................."}</b></p>
+            </div>
+            <p>Spett.le {nome_cliente_fmt},</p>
+            <p>come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:</p>
+            
+            <div style="margin-top: 30px; margin-bottom: 30px;">
+                {html_elenco}
+            </div>
+            <div style="margin-bottom: 30px;">
+                <p>Per un costo complessivo di: <b>{totale_num} ({totale_text} euro)</b></p>
+            </div>
+
+            <div style="font-size: 10pt; text-align: justify; margin-top: 30px;">
+                <p><b>Note e Condizioni:</b></p>
+                <ul style="padding-left: 20px; margin: 0;">
+                    <li style="margin-bottom: 5px;">Il presente preventivo si intende <b>IVA ESCLUSA</b> da contabilizzare secondo l\'aliquota prevista dalla legge alla data della fatturazione.</li>
+                    <li style="margin-bottom: 5px;">Eventuali indagini aggiuntive che si rendessero necessarie per esigenze di approfondimento riscontrate in corso d\'opera dovranno essere preventivamente valutate, prezzate ed approvate dalla Committenza.</li>
+                    <li style="margin-bottom: 5px;">Nel presente preventivo non sono altresì conteggiate eventuali opere provvisionali che si rendessero necessarie per la realizzazione del rilievo. Qualora se ne dovesse riscontrare la necessità tali opere dovranno essere contabilizzate a parte o realizzate direttamente dalla Committenza.</li>
+                    <li style="margin-bottom: 5px;">Le tempistiche previste per le varie attività inerenti i rilievi all\'esterno sono suscettibili di modifica in relazione alle condizioni atmosferico-meteoreologiche.</li>
+                    <li style="margin-bottom: 5px;">Per ottimizzare le tempistiche previste per le varie attività si richiedono gli eventuali permessi necessari per il raggiungimento diretto del sito di studio e degli ambienti interni.</li>
+                    <li style="margin-bottom: 5px;">Qualora venga accettato, il presente preventivo, dovrà essere perfezionato con un contratto di fornitura di servizi.</li>
+                    <li style="margin-bottom: 5px;">La società SISMA srl è disponibile ad iniziare il lavoro con un preavviso minimo di giorni <b>{giorni_preavviso} (solari)</b> e in seguito al pagamento dell\'anticipo che sarà contabilizzato nella percentuale del <b>{perc_anticipo}%</b> della somma totale prevista dal contratto di fornitura dei servizi.</li>
+                    <li>La Società SISMA srl, qualora venisse incaricata per i sopracitati servizi, si riserverà il diritto di utilizzare gli elaborati digitali sviluppati nel corso del progetto per scopi autopromozionali, fatti ovviamente salvo i diritti della Proprietà del Bene.</li>
+                </ul>
+                <p style="margin-top: 15px;">Rimaniamo a vostra disposizione per eventuali chiarimenti o specifiche.</p>
+            </div>
+            <div style="margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end;">
+                <div style="width: 45%;">
+                    <p style="margin-bottom: 60px;"><b>Per Sisma SRL</b><br>In fede,</p>
+                    <p style="margin: 0;"><b>{socio_firma_completo}</b></p>
+                    <p style="margin: 0; font-size: 10pt;">{socio_tel}</p>
+                </div>
+                <div style="width: 45%; text-align: right;">
+                    <p style="margin-bottom: 60px;"><b>Per accettazione</b></p>
+                    <div style="margin: 0;">
+                         <span style="margin-right: 10px;">Data: ....................</span>
+                         <span>Firma: ....................</span>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 40px; border-top: 1px solid #0C3A47; padding-top: 10px; font-size: 8pt; color: #0C3A47;">
+                <p style="text-align: center; font-weight: bold; margin: 0 0 10px 0;">SISMA – Sistemi Integrati di Monitoraggio Architettonico srl</p>
+                <div style="display: flex; justify-content: space-between;">
+                    <div style="text-align: left;">
+                        <b>sede:</b> Piazza Togliatti, 40 – Scandicci (FI) – 50018<br>
+                        <b>C.F. | P.IVA:</b> 06557660484
+                    </div>
+                    <div style="text-align: right;">
+                        <b>e-mail | PEC:</b> info@sisma-srl.com | sisma2015@pec.cgn.it<br>
+                        <b>website:</b> www.sisma-srl.com
+                    </div>
+                </div>
+            </div>
+        </div>
+        </body>
+        </html>
+        """
+        html_template = textwrap.dedent(raw_html)
+
+        with st.expander("👁️ ANTEPRIMA DOCUMENTO (Clicca per espandere)", expanded=True):
+            components.html(html_template, height=800, scrolling=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_save, c_down = st.columns([1, 1])
         with c_save:
             if st.button("💾 SALVA IN ARCHIVIO", type="primary", use_container_width=True):
-                # Qui andrebbe la tua funzione salva_record(...)
-                st.success("Simulazione salvataggio completata!")
+                if not cli_sel or not oggetto_prev:
+                    st.error("Inserisci Cliente e Oggetto!")
+                elif tot_netto == 0:
+                    st.error("Inserisci almeno una voce.")
+                else:
+                    record = {
+                        "Codice": new_code, "Tipo": tipo_prev, "Data": str(data_prev),
+                        "Cliente": cli_sel, "Oggetto": oggetto_prev,
+                        "Totale Netto": tot_netto, "Totale Lordo": tot_netto, "Stato": stato_prev,
+                        "Dati_JSON": json.dumps(dettagli_list)
+                    }
+                    salva_record(record, "Preventivi", "Codice", "new")
+                    st.session_state["prev_lines"] = pd.DataFrame([{"Titolo Attività": "", "Descrizione Estesa": "", "Prezzo Totale": 0.0}])
+                    st.success(f"Preventivo {new_code} salvato!")
+                    time.sleep(1.5)
+                    st.rerun()
 
         with c_down:
-            # Preparazione Dati per il Word
-            dict_docx = {
-                "codice": new_code, "cliente": cli_sel or "................",
-                "indirizzo": indirizzo_cli, "data_testo": data_str,
-                "oggetto": oggetto_prev, "dettagli": dettagli_list,
-                "tot_num": totale_num, "tot_txt": totale_text,
-                "giorni": giorni_preavviso, "perc": perc_anticipo,
-                "socio": socio_firma_completo, "tel": socio_tel
-            }
-            
+            # === LOGICA NUOVA: GENERAZIONE DOCX REALE ===
+            def genera_file_docx():
+                doc = Document()
+                # Margini standard (2.5 cm)
+                for section in doc.sections:
+                    section.top_margin = Cm(2)
+                    section.bottom_margin = Cm(2)
+                    section.left_margin = Cm(2.5)
+                    section.right_margin = Cm(2)
+
+                # Intestazione SISMA
+                h = doc.add_paragraph()
+                h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run_h = h.add_run("SISMA s.r.l.")
+                run_h.bold = True
+                run_h.font.size = Pt(16)
+
+                # Codice e Destinatario
+                p_cod = doc.add_paragraph()
+                p_cod.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                p_cod.add_run(f"Preventivo n. {new_code}").bold = True
+
+                p_dest = doc.add_paragraph()
+                p_dest.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                p_dest.add_run(f"\n{nome_cliente_fmt}\n{indirizzo_cli}").italic = True
+
+                # Data e Oggetto
+                doc.add_paragraph(f"\n{data_str}")
+                p_obj = doc.add_paragraph()
+                p_obj.add_run(f"Oggetto: {oggetto_prev if oggetto_prev else '....................'}").bold = True
+
+                doc.add_paragraph(f"\nSpett.le {nome_cliente_fmt},")
+                doc.add_paragraph("come da contatti intercorsi, facendo seguito alla Vostra gentile richiesta, per la realizzazione dei servizi in oggetto, di seguito riportiamo il dettaglio delle attività e delle relative offerte tecnico-economiche:")
+
+                # Voci di costo
+                for i, item in enumerate(dettagli_list, 1):
+                    p_tit = doc.add_paragraph()
+                    p_tit.add_run(f"{i}. {item['titolo']}").bold = True
+                    p_desc = doc.add_paragraph(item['descrizione'])
+                    p_desc.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    p_prz = doc.add_paragraph()
+                    p_prz.add_run(f"Costo: {fmt_num(item['prezzo'])} ({formatta_prezzo_testuale(item['prezzo'])} euro)").bold = True
+
+                # Totale
+                p_tot = doc.add_paragraph()
+                p_tot.add_run(f"\nPer un costo complessivo di: {totale_num} ({totale_text} euro)").bold = True
+
+                # Note e Condizioni
+                doc.add_paragraph("\nNote e Condizioni:").bold = True
+                note = [
+                    "Il presente preventivo si intende IVA ESCLUSA.",
+                    "Eventuali indagini aggiuntive dovranno essere preventivamente approvate.",
+                    "Non sono conteggiate eventuali opere provvisionali.",
+                    f"Preavviso minimo di giorni {giorni_preavviso} (solari).",
+                    f"Anticipo previsto: {perc_anticipo}%."
+                ]
+                for n in note:
+                    doc.add_paragraph(n, style='List Bullet')
+
+                # Firme (Tabella per allineamento)
+                table = doc.add_table(rows=1, cols=2)
+                table.autofit = True
+                cells = table.rows[0].cells
+                cells[0].paragraphs[0].add_run(f"\nPer Sisma SRL\nIn fede,\n\n{socio_firma_completo}\n{socio_tel}").bold = True
+                cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                cells[1].paragraphs[0].add_run("\nPer accettazione\n\nData: ....................\nFirma: ....................").bold = True
+
+                buffer = BytesIO()
+                doc.save(buffer)
+                buffer.seek(0)
+                return buffer
+
             if dettagli_list:
-                docx_buffer = genera_docx_sisma(dict_docx)
                 st.download_button(
-                    label="📥 SCARICA IN FORMATO WORD (.docx)",
-                    data=docx_buffer,
-                    file_name=f"Preventivo_{new_code.replace('/', '_')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    label="📥 SCARICA IN FORMATO WORD (.docx)", 
+                    data=genera_file_docx(),
+                    file_name=f"Preventivo_{new_code.replace('/', '_')}.docx", 
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
                     use_container_width=True
                 )
             else:
-                st.warning("Inserisci almeno una voce per scaricare.")
+                st.button("📥 SCARICA IN FORMATO WORD (.docx)", disabled=True, use_container_width=True)
 
     with tab_arch:
-        st.info("Sezione Archivio")
-
-# Nota: Assicurati di chiamare render_preventivi_page() nel tuo main script.
+        df_prev = carica_dati("Preventivi")
+        if df_prev.empty:
+            st.info("Archivio vuoto.")
+        else:
+            c_f1, c_f2 = st.columns(2)
+            txt_search = c_f1.text_input("🔍 Cerca preventivo")
+            if txt_search:
+                df_prev = df_prev[df_prev.astype(str).apply(lambda x: x.str.contains(txt_search, case=False)).any(axis=1)]
+            st.dataframe(df_prev[["Codice", "Data", "Cliente", "Oggetto", "Totale Lordo", "Stato"]], use_container_width=True, hide_index=True)
+            c_del1, c_del2 = st.columns([3, 1])
+            sel_del = c_del1.selectbox("Seleziona da eliminare:", [""] + df_prev["Codice"].tolist())
+            if c_del2.button("Elimina", type="primary"):
+                if sel_del: elimina_record(sel_del, "Preventivi", "Codice")
 
 # --- 8. ROUTING ---
 with st.sidebar:
@@ -2101,6 +2290,7 @@ elif "> CLIENTI" in scelta:
     render_clienti_page()
 elif "> SOCIETA" in scelta:
     render_organigramma()
+
 
 
 
