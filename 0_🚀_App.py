@@ -1498,7 +1498,7 @@ def render_dashboard():
                     df_exp_costi = pd.DataFrame(rows_costi)
                     
                     if not df_exp_piano.empty:
-                        cols_p = ["Codice", "Voce", "Stato", "Importo netto €", "IVA %", "Data Saldo", "Data Fattura", "Fattura"]
+                        cols_p = ["Codice", "Voce", "Stato", "Saldato", "Importo netto €", "IVA %", "Data Saldo", "Data Fattura", "Fattura"]
                         final_cols_p = [c for c in cols_p if c in df_exp_piano.columns] + [c for c in df_exp_piano.columns if c not in cols_p]
                         df_exp_piano = df_exp_piano[final_cols_p]
 
@@ -1576,7 +1576,36 @@ def render_dashboard():
                 # DEFAULT (VERDE): Tutto chiuso/saldato
                 return "🟢"
 
+            # --- NUOVA FUNZIONE: CALCOLA IL "SALDATO" GLOBALE DELLA COMMESSA ---
+            def calcola_saldato_commessa(row):
+                try:
+                    raw_json = row.get("Dati_JSON", "{}")
+                    if pd.isna(raw_json) or str(raw_json).strip() == "": return False
+                    dati = json.loads(str(raw_json))
+                    incassi = dati.get("incassi", [])
+                    
+                    if not incassi: return False # Se non ci sono voci incasso, non può essere saldata
+                    
+                    for item in incassi:
+                        dati_reali = item
+                        if isinstance(item, dict) and "Saldato" not in item and "Stato" not in item:
+                            # Gestione sicurezza in caso la riga sia annidata dentro un indice (dict di dict)
+                            for k, v in item.items():
+                                if isinstance(v, dict) and ("Saldato" in v or "Stato" in v):
+                                    dati_reali = v
+                                    break
+                                    
+                        # Se anche una sola riga del piano economico NON è saldata, la commessa NON è saldata
+                        if not bool(dati_reali.get("Saldato", False)):
+                            return False
+                    
+                    return True # Tutti gli incassi sono saldati
+                except:
+                    return False
+
+            # Applica le logiche calcolate al DataFrame
             df_to_edit["🚦 STATO"] = df_to_edit.apply(calcola_stato_colore, axis=1)
+            df_to_edit["Saldato"] = df_to_edit.apply(calcola_saldato_commessa, axis=1)
             
             if "Seleziona" not in df_to_edit.columns: df_to_edit.insert(0, "Seleziona", st.session_state["select_all_state"])
             else: df_to_edit["Seleziona"] = st.session_state["select_all_state"]
@@ -1592,7 +1621,8 @@ def render_dashboard():
                 if col_name in df_to_edit.columns:
                     df_to_edit[col_name] = df_to_edit[col_name].apply(forza_testo_visivo).astype(str)
 
-            cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
+            # --- AGGIUNTA COLONNA "Saldato" DOPO "Totale Netto Commessa" ---
+            cols_to_show = ["Seleziona", "🚦 STATO", "Codice", "Stato", "Anno", "Cliente", "Nome Commessa", "Settore", "Totale Netto Commessa", "Saldato", "Totale Netto Fatturato", "Totale Lordo Fatturato"]
             actual_cols = [c for c in cols_to_show if c in df_to_edit.columns]
 
             st.caption("LEGENDA: 🔴 Collaboratori da saldare | 🟣 Soci da saldare o conteggiare | 🔵 Soci conteggiati | 🟡 Commessa Aperta | 🟢 Chiusa e Saldata")
@@ -1603,6 +1633,7 @@ def render_dashboard():
                     "Seleziona": st.column_config.CheckboxColumn("☑️", default=False, width="small"),
                     "🚦 STATO": st.column_config.Column("ℹ️", width="small", help="Stato calcolato"),
                     "Totale Netto Commessa": st.column_config.TextColumn("Tot. Commessa (Netto)", help="Totale Netto del Piano Economico (Previsto)", width="medium"),
+                    "Saldato": st.column_config.CheckboxColumn("Saldato", help="Indica se tutti i pagamenti previsti per questa commessa sono stati saldati", width="small"),
                     "Totale Netto Fatturato": st.column_config.TextColumn("Fatturato (Netto)", help="Totale Netto effettivamente Fatturato", width="medium"),
                     "Totale Lordo Fatturato": st.column_config.TextColumn("Fatturato (Lordo)", help="Totale Lordo effettivamente Fatturato", width="medium"),
                 },
