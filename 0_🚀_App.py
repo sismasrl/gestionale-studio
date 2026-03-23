@@ -691,6 +691,10 @@ def render_commessa_form(data=None):
 
         if "stato_incassi" in st.session_state:
             st.session_state["stato_incassi"]["Importo netto €"] = st.session_state["stato_incassi"]["Importo netto €"].apply(converti_valuta_italiana)
+            
+            # --- NUOVO: Crea la colonna "Saldato" se non esiste nel DataFrame ---
+            if "Saldato" not in st.session_state["stato_incassi"].columns:
+                st.session_state["stato_incassi"]["Saldato"] = False
 
         # --- MODIFICA WIDTH: SETTATO A "MEDIUM" PER TUTTE LE COLONNE ---
         col_cfg = {
@@ -699,16 +703,23 @@ def render_commessa_form(data=None):
             "IVA %": st.column_config.SelectboxColumn(options=[0, 22], required=True, width="medium"),
             "Importo lordo €": st.column_config.NumberColumn(format="€ %.2f", disabled=True, width="medium"),
             "Stato": st.column_config.SelectboxColumn(options=["Previsto", "Fatturato"], required=True, width="medium"),
+            "Saldato": st.column_config.CheckboxColumn("Saldato", default=False, width="small"), # <-- NUOVA COLONNA TIC
             "Data Saldo": st.column_config.DateColumn("Data Saldo", format="DD/MM/YYYY", width="medium"),
             "Data Fattura": st.column_config.DateColumn("Data Fattura", format="DD/MM/YYYY", width="medium"),
             "Fattura": st.column_config.TextColumn("N. Fattura", width="medium")
         }
         
+        # --- NUOVO: Ordine colonne esplicito per mettere "Saldato" accanto a "Stato" ---
+        colonne_ordinate = [
+            "Voce", "Importo netto €", "IVA %", "Importo lordo €", 
+            "Stato", "Saldato", "Data Saldo", "Data Fattura", "Fattura"
+        ]
+        
         edited_incassi = st.data_editor(
             st.session_state["stato_incassi"], 
             num_rows="dynamic", 
             column_config=col_cfg, 
-            column_order=cols_incassi_std,
+            column_order=colonne_ordinate, # Sostituisce cols_incassi_std
             use_container_width=True, 
             key="ed_inc"
         )
@@ -747,7 +758,7 @@ def render_commessa_form(data=None):
         k1, k2 = st.columns(2)
         with k1: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Netto (Fatturato)</div><div class='total-value'>{fmt_euro(tot_net)}</div></div>", unsafe_allow_html=True)
         with k2: st.markdown(f"<div class='total-box-standard'><div class='total-label'>Totale Lordo (Fatturato)</div><div class='total-value'>{fmt_euro(tot_lordo)}</div></div>", unsafe_allow_html=True)
-
+  
     # 05. COSTI
     with st.expander("05 // COSTI & RETRIBUZIONI", expanded=True):
         top_metrics = st.container()
