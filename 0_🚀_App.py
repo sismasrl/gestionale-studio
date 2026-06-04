@@ -781,6 +781,11 @@ def render_commessa_form(data=None):
         }
         if "Importo" in df_soci_def.columns: df_soci_def["Importo"] = df_soci_def["Importo"].apply(converti_valuta_italiana)
         edited_soci = st.data_editor(df_soci_def, num_rows="dynamic", column_config=soci_cfg, use_container_width=True, key="ed_soc")
+        
+        # --- TABELLA TOTALE SOCI ---
+        sum_soci = edited_soci["Importo"].apply(converti_valuta_italiana).sum()
+        st.dataframe(pd.DataFrame([{"Totale Soci": fmt_euro(sum_soci)}]), hide_index=True)
+
 
         st.markdown("### COLLABORATORI")
         collab_cfg = {
@@ -791,6 +796,11 @@ def render_commessa_form(data=None):
         }
         if "Importo" in df_collab_def.columns: df_collab_def["Importo"] = df_collab_def["Importo"].apply(converti_valuta_italiana)
         edited_collab = st.data_editor(df_collab_def, num_rows="dynamic", column_config=collab_cfg, use_container_width=True, key="ed_col")
+        
+        # --- TABELLA TOTALE COLLABORATORI ---
+        sum_collab = edited_collab["Importo"].apply(converti_valuta_italiana).sum()
+        st.dataframe(pd.DataFrame([{"Totale Collaboratori": fmt_euro(sum_collab)}]), hide_index=True)
+
 
         st.markdown("### SPESE VARIE")
         spese_cfg = {
@@ -801,10 +811,12 @@ def render_commessa_form(data=None):
         if "Importo" in df_spese_def.columns: df_spese_def["Importo"] = df_spese_def["Importo"].apply(converti_valuta_italiana)
         edited_spese = st.data_editor(df_spese_def, num_rows="dynamic", column_config=spese_cfg, use_container_width=True, key="ed_sp")
         
-        sum_soci = edited_soci["Importo"].apply(converti_valuta_italiana).sum()
-        sum_collab = edited_collab["Importo"].apply(converti_valuta_italiana).sum()
+        # --- TABELLA TOTALE SPESE VARIE ---
         sum_spese = edited_spese["Importo"].apply(converti_valuta_italiana).sum()
+        st.dataframe(pd.DataFrame([{"Totale Spese Varie": fmt_euro(sum_spese)}]), hide_index=True)
         
+        # Le variabili sum_soci, sum_collab e sum_spese sono già calcolate, 
+        # quindi passiamo direttamente a top_metrics
         with top_metrics:
             b1, b2, b3, b4 = st.columns(4)
             with b1:
